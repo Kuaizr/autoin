@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     redis_plan_state_prefix: str = Field(default="autoin:state:plan")
     redis_pubsub_channel: str = Field(default="autoin:channel:events")
     redis_consumer_group: str = Field(default="autoin:group:coordinator")
+    memory_recent_turns: int = Field(default=5, ge=1)
+    memory_summary_max_chars: int = Field(default=1200, ge=100)
     ui_lock_key: str = Field(default="autoin:lock:ui")
     ui_lock_ttl_ms: int = Field(default=15000, ge=1000)
     ui_lock_retry_delay_ms: int = Field(default=250, ge=50)

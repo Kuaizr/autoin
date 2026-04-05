@@ -14,11 +14,13 @@ def utc_now() -> datetime:
 
 class EventType(StrEnum):
     MESSAGE_BUFFERED = "message_buffered"
+    MESSAGE_DEBOUNCED = "message_debounced"
     TASK_CREATED = "task_created"
     TASK_STATUS_CHANGED = "task_status_changed"
     ACTION_REQUESTED = "action_requested"
     ACTION_COMPLETED = "action_completed"
     ADAPTER_HEARTBEAT = "adapter_heartbeat"
+    MEMORY_COMPACTED = "memory_compacted"
     SNAPSHOT_REQUESTED = "snapshot_requested"
     SNAPSHOT_CAPTURED = "snapshot_captured"
     LOCK_ACQUIRED = "lock_acquired"
@@ -80,6 +82,17 @@ class MessagePayload(BaseModel):
     observed_at: datetime = Field(default_factory=utc_now)
     debounce_window_seconds: int = Field(default=10, ge=1)
     screenshot_ref: str | None = Field(default=None, description="Object storage key or local cache key.")
+
+
+class MemoryCompactionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: ConversationRef
+    compressed_summary: str
+    recent_messages: list[str] = Field(default_factory=list)
+    latest_screenshot_ref: str | None = None
+    source_message_count: int = Field(default=0, ge=0)
+    compacted_at: datetime = Field(default_factory=utc_now)
 
 
 class TaskPayload(BaseModel):
@@ -160,4 +173,11 @@ class UnifiedEvent(BaseModel):
     event_id: str = Field(default_factory=lambda: str(uuid4()))
     event_type: EventType
     metadata: EventMetadata
-    payload: MessagePayload | TaskPayload | LockStatePayload | ErrorPayload | AdapterHeartbeatPayload
+    payload: (
+        MessagePayload
+        | MemoryCompactionPayload
+        | TaskPayload
+        | LockStatePayload
+        | ErrorPayload
+        | AdapterHeartbeatPayload
+    )
