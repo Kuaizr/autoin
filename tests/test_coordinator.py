@@ -1,5 +1,5 @@
 from autoin.coordinator import Coordinator, TaskDependencyError
-from autoin.infrastructure.models import TaskKind, TaskPayload, TaskStatus
+from autoin.infrastructure.models import CheckerDecisionPayload, ConversationRef, Platform, TaskKind, TaskPayload, TaskStatus
 
 
 class StubBroker:
@@ -255,3 +255,81 @@ def test_resume_all_releases_ready_tasks_for_recovered_plans() -> None:
 
     assert resumed == {plan.plan_id: ["1-0"]}
     assert state.released_task_ids == ["task-1"]
+
+
+def test_checker_approval_releases_dispatch_task() -> None:
+    broker = StubBroker()
+    coordinator = Coordinator(broker)
+    check_task = TaskPayload(
+        task_id="task-check",
+        plan_id="plan-1",
+        kind=TaskKind.CHECK,
+        adapter="xiaohongshu.executor",
+        target=ConversationRef(platform=Platform.XIAOHONGSHU, user_id="u1"),
+        action="capture_and_validate_order",
+        sequence=1,
+    )
+    dispatch_task = TaskPayload(
+        task_id="task-dispatch",
+        plan_id="plan-1",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        target=ConversationRef(platform=Platform.XIAOHONGSHU, user_id="u1"),
+        action="send_dispatch_message",
+        sequence=2,
+        dependencies=["task-check"],
+    )
+    plan = coordinator.create_plan("corr-8", [check_task, dispatch_task])
+    state, _ = coordinator.dispatch_plan(plan)
+    check_task = state.plan.tasks[0]
+    decision = CheckerDecisionPayload(
+        conversation=check_task.target,
+        check_task_id=check_task.task_id,
+        approved=True,
+        reason="checker_fields_present",
+        screenshot_ref="shot-1",
+        extracted_fields={"address": "Shanghai", "item_code": "A123"},
+    )
+
+    released = coordinator.handle_checker_result(plan.plan_id, decision)
+
+    assert released == ["2-0"]
+    assert state.completed_task_ids == [check_task.task_id]
+
+
+def test_checker_rejection_blocks_plan() -> None:
+    broker = StubBroker()
+    coordinator = Coordinator(broker)
+    check_task = TaskPayload(
+        task_id="task-check",
+        kind=TaskKind.CHECK,
+        adapter="xiaohongshu.executor",
+        target=ConversationRef(platform=Platform.XIAOHONGSHU, user_id="u2"),
+        action="capture_and_validate_order",
+        sequence=1,
+    )
+    dispatch_task = TaskPayload(
+        task_id="task-dispatch",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        target=ConversationRef(platform=Platform.XIAOHONGSHU, user_id="u2"),
+        action="send_dispatch_message",
+        sequence=2,
+        dependencies=["task-check"],
+    )
+    plan = coordinator.create_plan("corr-9", [check_task, dispatch_task])
+    state, _ = coordinator.dispatch_plan(plan)
+    check_task = state.plan.tasks[0]
+    decision = CheckerDecisionPayload(
+        conversation=check_task.target,
+        check_task_id=check_task.task_id,
+        approved=False,
+        reason="checker_missing_required_fields",
+        screenshot_ref="shot-2",
+        extracted_fields={"address": "Shanghai"},
+    )
+
+    released = coordinator.handle_checker_result(plan.plan_id, decision)
+
+    assert released == []
+    assert state.blocked is True

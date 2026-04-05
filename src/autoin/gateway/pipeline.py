@@ -3,14 +3,7 @@ from __future__ import annotations
 from autoin.coordinator import Coordinator
 from autoin.gateway.debounce import MessageDebouncer
 from autoin.gateway.memory import MemoryCompactor
-from autoin.infrastructure.models import (
-    EventMetadata,
-    EventType,
-    IntakeDecisionPayload,
-    MemoryCompactionPayload,
-    TaskKind,
-    UnifiedEvent,
-)
+from autoin.infrastructure.models import EventMetadata, EventType, UnifiedEvent
 
 
 class GatewayPipeline:

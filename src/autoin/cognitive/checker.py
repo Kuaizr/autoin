@@ -1,10 +1,28 @@
 from __future__ import annotations
 
-from autoin.infrastructure.models import TaskPayload
+from autoin.infrastructure.models import CheckerDecisionPayload, TaskPayload
 
 
 class CheckerAgent:
-    """Placeholder checker contract for screenshot/order validation."""
+    """Rule-based checker stub for screenshot/order validation."""
 
-    def validate_dispatch_task(self, task: TaskPayload) -> bool:
-        return task.kind.name in {"CHECK", "UI_ACTION"}
+    def validate_dispatch_task(
+        self,
+        task: TaskPayload,
+        screenshot_ref: str | None = None,
+        extracted_fields: dict[str, str] | None = None,
+    ) -> CheckerDecisionPayload:
+        fields = extracted_fields or {}
+        required = ("address", "item_code")
+        approved = task.kind.name == "CHECK" and all(fields.get(key) for key in required)
+        reason = "checker_fields_present" if approved else "checker_missing_required_fields"
+        if task.target is None:
+            raise ValueError("Checker validation requires a task target conversation.")
+        return CheckerDecisionPayload(
+            conversation=task.target,
+            check_task_id=task.task_id,
+            approved=approved,
+            reason=reason,
+            screenshot_ref=screenshot_ref,
+            extracted_fields=fields,
+        )

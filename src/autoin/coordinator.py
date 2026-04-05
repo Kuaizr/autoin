@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from autoin.cognitive.brain import BrainAgent
+from autoin.cognitive.checker import CheckerAgent
 from autoin.infrastructure.broker import RedisBroker
 from autoin.infrastructure.models import (
     BrainPlanPayload,
+    CheckerDecisionPayload,
     ErrorPayload,
     EventMetadata,
     EventType,
@@ -32,10 +34,12 @@ class Coordinator:
         broker: RedisBroker,
         producer_name: str = "coordinator",
         brain: BrainAgent | None = None,
+        checker: CheckerAgent | None = None,
     ) -> None:
         self.broker = broker
         self.producer_name = producer_name
         self.brain = brain or BrainAgent()
+        self.checker = checker or CheckerAgent()
 
     def create_plan(self, correlation_id: str, tasks: Iterable[TaskPayload]) -> TaskPlan:
         planned_tasks = sorted(tasks, key=lambda item: item.sequence)
@@ -121,6 +125,35 @@ class Coordinator:
         if state is None:
             return []
         released_stream_ids = self.complete_task(state, task)
+        self.finalize_plan(state)
+        return released_stream_ids
+
+    def handle_checker_result(
+        self,
+        plan_id: str,
+        decision: CheckerDecisionPayload,
+    ) -> list[str]:
+        state = self.get_plan_state(plan_id)
+        if state is None:
+            return []
+        check_task = next((task for task in state.plan.tasks if task.task_id == decision.check_task_id), None)
+        if check_task is None:
+            return []
+        self.broker.publish(
+            UnifiedEvent(
+                event_type=EventType.CHECKER_DECIDED,
+                metadata=EventMetadata(
+                    producer=self.producer_name,
+                    correlation_id=state.plan.correlation_id,
+                    causation_id=decision.check_task_id,
+                ),
+                payload=decision,
+            )
+        )
+        if not decision.approved:
+            self.fail_task(state, check_task)
+            return []
+        released_stream_ids = self.complete_task(state, check_task)
         self.finalize_plan(state)
         return released_stream_ids
 

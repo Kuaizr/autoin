@@ -16,6 +16,7 @@ class EventType(StrEnum):
     MESSAGE_BUFFERED = "message_buffered"
     MESSAGE_DEBOUNCED = "message_debounced"
     BRAIN_DECIDED = "brain_decided"
+    CHECKER_DECIDED = "checker_decided"
     TASK_CREATED = "task_created"
     TASK_STATUS_CHANGED = "task_status_changed"
     ACTION_REQUESTED = "action_requested"
@@ -117,6 +118,18 @@ class BrainPlanPayload(BaseModel):
     generated_at: datetime = Field(default_factory=utc_now)
 
 
+class CheckerDecisionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: ConversationRef
+    check_task_id: str
+    approved: bool
+    reason: str
+    screenshot_ref: str | None = None
+    extracted_fields: dict[str, str] = Field(default_factory=dict)
+    validated_at: datetime = Field(default_factory=utc_now)
+
+
 class TaskPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -198,6 +211,7 @@ class UnifiedEvent(BaseModel):
     payload: (
         MessagePayload
         | BrainPlanPayload
+        | CheckerDecisionPayload
         | IntakeDecisionPayload
         | MemoryCompactionPayload
         | TaskPayload
