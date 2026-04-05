@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from autoin.adapters.actions import ActionRegistry, build_default_action_registry
+from autoin.adapters.drivers import DesktopDriver, MockWindowsDriver
 from autoin.adapters.platforms import (
     build_douyin_action_registry,
     build_wechat_action_registry,
@@ -13,15 +14,16 @@ from autoin.infrastructure.lock_manager import RedisLockManager
 from autoin.infrastructure.models import Platform
 
 
-def build_platform_action_registry(platform: Platform) -> ActionRegistry:
+def build_platform_action_registry(platform: Platform, driver: DesktopDriver | None = None) -> ActionRegistry:
+    selected_driver = driver or MockWindowsDriver()
     if platform == Platform.WECHAT:
-        return build_wechat_action_registry()
+        return build_wechat_action_registry(driver=selected_driver)
     if platform == Platform.XIAOHONGSHU:
-        return build_xiaohongshu_action_registry()
+        return build_xiaohongshu_action_registry(driver=selected_driver)
     if platform == Platform.DOUYIN:
-        return build_douyin_action_registry()
+        return build_douyin_action_registry(driver=selected_driver)
     if platform == Platform.XIANYU:
-        return build_xianyu_action_registry()
+        return build_xianyu_action_registry(driver=selected_driver)
     return build_default_action_registry()
 
 
@@ -30,11 +32,12 @@ def build_executor_adapter(
     platform_name: Platform,
     broker: RedisBroker,
     lock_manager: RedisLockManager,
+    driver: DesktopDriver | None = None,
 ) -> ExecutorAdapter:
     return ExecutorAdapter(
         adapter_name=adapter_name,
         platform_name=platform_name,
         broker=broker,
         lock_manager=lock_manager,
-        action_registry=build_platform_action_registry(platform_name),
+        action_registry=build_platform_action_registry(platform_name, driver=driver),
     )

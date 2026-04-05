@@ -1,0 +1,49 @@
+from autoin.adapters import build_platform_action_registry
+from autoin.adapters.drivers import DesktopDriver
+from autoin.infrastructure.models import ConversationRef, Platform, TaskKind, TaskPayload
+
+
+class RecordingDriver(DesktopDriver):
+    def __init__(self) -> None:
+        self.calls = []
+
+    def send_message(self, app: str, target_uid: str | None, message: str) -> dict[str, object]:
+        self.calls.append(("send_message", app, target_uid, message))
+        return {"driver": "recording", "operation": "send_message"}
+
+    def capture_window(self, app: str, target_uid: str | None, mode: str) -> dict[str, object]:
+        self.calls.append(("capture_window", app, target_uid, mode))
+        return {"driver": "recording", "operation": "capture_window"}
+
+
+def test_platform_registry_uses_driver_for_wechat_send() -> None:
+    driver = RecordingDriver()
+    registry = build_platform_action_registry(Platform.WECHAT, driver=driver)
+    task = TaskPayload(
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        target=ConversationRef(platform=Platform.XIAOHONGSHU, user_id="u1"),
+        action="send_dispatch_message",
+        arguments={"source_platform": Platform.XIAOHONGSHU},
+    )
+
+    result = registry.dispatch(task)
+
+    assert result["driver"] == "recording"
+    assert driver.calls == [("send_message", "wechat", "xiaohongshu_u1", "dispatch_v1")]
+
+
+def test_platform_registry_uses_driver_for_source_capture() -> None:
+    driver = RecordingDriver()
+    registry = build_platform_action_registry(Platform.DOUYIN, driver=driver)
+    task = TaskPayload(
+        kind=TaskKind.CHECK,
+        adapter="douyin.executor",
+        target=ConversationRef(platform=Platform.DOUYIN, user_id="u2"),
+        action="capture_and_validate_order",
+    )
+
+    result = registry.dispatch(task)
+
+    assert result["driver"] == "recording"
+    assert driver.calls == [("capture_window", "douyin", "douyin_u2", "focused_window")]
