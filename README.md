@@ -57,3 +57,19 @@ uv run python -m autoin.tools.enqueue_dispatch \
 ```
 
 This is the simplest way to hand a real dispatch task to the Windows `wechat_worker`.
+
+## Control Plane
+
+On the Linux control plane, run the event-stream loop that turns debounced messages into plans and follow-up tasks:
+
+```bash
+uv run python -m autoin.tools.control_plane
+```
+
+For a bounded debug run:
+
+```bash
+uv run python -m autoin.tools.control_plane --max-batches 1
+```
+
+Use `--once --quiet` if you only want the final JSON summary for a single polling batch.
