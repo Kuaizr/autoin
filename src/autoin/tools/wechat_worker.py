@@ -15,6 +15,17 @@ def default_consumer_name() -> str:
     return f"wechat-worker-{hostname}"
 
 
+def _build_worker_snapshot(consumer_name: str, executor: Any, processed_stream_ids: list[str], **extra: Any) -> dict[str, Any]:
+    return {
+        "consumer_name": consumer_name,
+        "processed_stream_ids": processed_stream_ids,
+        "processed_count": len(processed_stream_ids),
+        "last_action_result": executor.last_action_result,
+        "last_rollback_result": executor.last_rollback_result,
+        **extra,
+    }
+
+
 def build_wechat_worker(
     consumer_name: str,
     *,
@@ -62,12 +73,7 @@ def run_wechat_worker_once(
     )
     executor.start_listening()
     processed = worker.poll_once(count=count, block_ms=block_ms)
-    return {
-        "consumer_name": consumer_name,
-        "processed_stream_ids": processed,
-        "last_action_result": executor.last_action_result,
-        "last_rollback_result": executor.last_rollback_result,
-    }
+    return _build_worker_snapshot(consumer_name, executor, processed)
 
 
 def run_wechat_worker_loop(
@@ -90,19 +96,30 @@ def run_wechat_worker_loop(
     )
     executor.start_listening()
     processed_stream_ids: list[str] = []
+    batch_summaries: list[dict[str, Any]] = []
     batches = 0
     while True:
-        processed_stream_ids.extend(worker.poll_once(count=count, block_ms=block_ms))
+        batch_processed = worker.poll_once(count=count, block_ms=block_ms)
+        processed_stream_ids.extend(batch_processed)
         batches += 1
+        batch_summaries.append(
+            {
+                "batch": batches,
+                "processed_stream_ids": batch_processed,
+                "processed_count": len(batch_processed),
+                "last_action_result": executor.last_action_result,
+                "last_rollback_result": executor.last_rollback_result,
+            }
+        )
         if max_batches is not None and batches >= max_batches:
             break
-    return {
-        "consumer_name": consumer_name,
-        "batches": batches,
-        "processed_stream_ids": processed_stream_ids,
-        "last_action_result": executor.last_action_result,
-        "last_rollback_result": executor.last_rollback_result,
-    }
+    return _build_worker_snapshot(
+        consumer_name,
+        executor,
+        processed_stream_ids,
+        batches=batches,
+        batch_summaries=batch_summaries,
+    )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

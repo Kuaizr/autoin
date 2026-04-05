@@ -165,25 +165,68 @@ class PywinautoDriver(DesktopDriver):
         self._send_wechat_keys("{ENTER}")
         time.sleep(0.6)
 
-    def _send_wechat_message(self, target_uid: str | None, message: str) -> WindowReference:
+    def _send_wechat_message_once(self, target_uid: str | None, message: str) -> tuple[WindowReference, list[str]]:
+        operation_log: list[str] = []
         window = self._find_live_window("wechat")
+        operation_log.append("window_resolved")
         self._focus_window(window)
+        operation_log.append("window_focused")
         if target_uid:
             self._open_wechat_search_and_select_target(target_uid)
+            operation_log.append("search_target_selected")
             self._focus_wechat_editor(window)
+            operation_log.append("editor_focused_by_click")
         else:
             self._focus_wechat_editor(window)
+            operation_log.append("editor_focused_by_click")
         self._set_windows_clipboard_text(message)
+        operation_log.append("message_copied")
         self._send_wechat_keys("^v")
         time.sleep(0.2)
+        operation_log.append("message_pasted")
         self._send_wechat_keys("{ENTER}")
+        operation_log.append("message_sent")
         return WindowReference(
             app="wechat",
             target_uid=target_uid,
             backend=get_window_profile("wechat").backend,
             locator=window.window_text() or "wechat_window",
             locator_status="resolved",
-        )
+        ), operation_log
+
+    def _send_wechat_message(self, target_uid: str | None, message: str) -> tuple[WindowReference, dict[str, object]]:
+        attempts: list[dict[str, object]] = []
+        last_error: DesktopAutomationError | None = None
+        for attempt in (1, 2):
+            try:
+                window, operation_log = self._send_wechat_message_once(target_uid, message)
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "status": "sent",
+                        "operation_log": operation_log,
+                    }
+                )
+                return window, {
+                    "delivery": "live_wechat",
+                    "delivery_attempts": attempts,
+                }
+            except DesktopAutomationError as exc:
+                attempts.append(
+                    {
+                        "attempt": attempt,
+                        "status": "failed",
+                        "error_code": exc.code,
+                        "error_message": str(exc),
+                    }
+                )
+                last_error = exc
+                if attempt == 1:
+                    time.sleep(0.4)
+                    continue
+                raise
+        assert last_error is not None
+        raise last_error
 
     def build_capture_artifact_path(self, app: str, target_uid: str | None, mode: str) -> Path:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -193,7 +236,7 @@ class PywinautoDriver(DesktopDriver):
 
     def send_message(self, app: str, target_uid: str | None, message: str) -> DriverActionResult:
         if app == "wechat" and getattr(self, "enable_live_wechat", False):  # pragma: no branch - simple switch
-            window = self._send_wechat_message(target_uid, message)
+            window, metadata = self._send_wechat_message(target_uid, message)
             return DriverActionResult(
                 driver="pywinauto",
                 operation="send_message",
@@ -202,7 +245,7 @@ class PywinautoDriver(DesktopDriver):
                 target_uid=target_uid,
                 message=message,
                 window=window,
-                metadata={"backend": window.backend, "delivery": "live_wechat"},
+                metadata={"backend": window.backend, **metadata},
             )
         window = self.resolve_window(app, target_uid)
         return DriverActionResult(

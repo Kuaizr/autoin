@@ -83,6 +83,7 @@ def test_run_wechat_worker_once_processes_single_batch() -> None:
 
     assert result["consumer_name"] == "worker-1"
     assert result["processed_stream_ids"] == ["1-0"]
+    assert result["processed_count"] == 1
     assert result["last_action_result"] is not None
     assert result["last_action_result"]["driver"] == "mock_windows"
     assert broker.group_ensured == 1
@@ -105,6 +106,8 @@ def test_run_wechat_worker_loop_stops_after_max_batches() -> None:
 
     assert result["batches"] == 2
     assert result["processed_stream_ids"] == ["1-0", "1-0"]
+    assert result["batch_summaries"][0]["processed_count"] == 1
+    assert result["batch_summaries"][1]["processed_count"] == 1
 
 
 def test_default_consumer_name_uses_hostname() -> None:
@@ -117,6 +120,7 @@ def test_wechat_worker_main_supports_mock_driver(capsys, monkeypatch) -> None:
         lambda **kwargs: {
             "consumer_name": kwargs["consumer_name"],
             "processed_stream_ids": ["1-0"],
+            "processed_count": 1,
             "last_action_result": {"driver": "mock_windows"},
             "last_rollback_result": None,
         },

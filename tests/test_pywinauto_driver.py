@@ -2,7 +2,13 @@ from pathlib import Path
 from sys import platform as sys_platform
 
 from autoin.adapters import MockWindowsDriver, build_windows_driver
-from autoin.adapters.drivers import DriverActionResult, PywinautoUnavailableError, get_window_profile
+from autoin.adapters.drivers import (
+    DesktopAutomationError,
+    DriverActionResult,
+    PywinautoUnavailableError,
+    WindowReference,
+    get_window_profile,
+)
 from autoin.adapters.drivers.pywinauto_driver import PywinautoDriver
 
 
@@ -125,6 +131,36 @@ def test_focus_wechat_editor_clicks_lower_editor_region(monkeypatch) -> None:
     PywinautoDriver._focus_wechat_editor(window)
 
     assert window.clicks == [(450, 610)]
+
+
+def test_send_wechat_message_retries_once_after_desktop_error(monkeypatch) -> None:
+    driver = object.__new__(PywinautoDriver)
+    attempts = []
+
+    def fake_once(target_uid: str | None, message: str):  # noqa: ANN001
+        attempts.append((target_uid, message))
+        if len(attempts) == 1:
+            raise DesktopAutomationError("focus_lost", "focus lost", app="wechat", target_uid=target_uid)
+        return (
+            WindowReference(
+                app="wechat",
+                target_uid=target_uid,
+                backend="uia",
+                locator="微信",
+                locator_status="resolved",
+            ),
+            ["window_resolved", "message_sent"],
+        )
+
+    monkeypatch.setattr(driver, "_send_wechat_message_once", fake_once)
+    monkeypatch.setattr("autoin.adapters.drivers.pywinauto_driver.time.sleep", lambda _: None)
+
+    window, metadata = driver._send_wechat_message("文件传输助手", "hello")
+
+    assert window.locator_status == "resolved"
+    assert [item["status"] for item in metadata["delivery_attempts"]] == ["failed", "sent"]
+    assert metadata["delivery_attempts"][0]["error_code"] == "focus_lost"
+    assert metadata["delivery_attempts"][1]["operation_log"] == ["window_resolved", "message_sent"]
 
 
 def test_window_profile_catalog_exposes_platform_hints() -> None:
