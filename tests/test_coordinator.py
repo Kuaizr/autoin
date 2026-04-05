@@ -1,5 +1,14 @@
+from autoin.adapters import AdapterDirectory
 from autoin.coordinator import Coordinator, TaskDependencyError
-from autoin.infrastructure.models import CheckerDecisionPayload, ConversationRef, Platform, TaskKind, TaskPayload, TaskStatus
+from autoin.infrastructure.models import (
+    AdapterManifestPayload,
+    CheckerDecisionPayload,
+    ConversationRef,
+    Platform,
+    TaskKind,
+    TaskPayload,
+    TaskStatus,
+)
 
 
 class StubBroker:
@@ -333,3 +342,30 @@ def test_checker_rejection_blocks_plan() -> None:
 
     assert released == []
     assert state.blocked is True
+
+
+def test_coordinator_validates_adapter_capabilities_before_releasing_task() -> None:
+    broker = StubBroker()
+    directory = AdapterDirectory(broker)
+    directory.register(
+        AdapterManifestPayload(
+            adapter="wechat.executor",
+            platform=Platform.WECHAT,
+            role="executor",
+            supported_actions=["send_dispatch_message"],
+        )
+    )
+    coordinator = Coordinator(broker, adapter_directory=directory)
+    task = TaskPayload(
+        task_id="task-1",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        action="send_dispatch_message",
+        sequence=1,
+    )
+
+    plan = coordinator.create_plan("corr-10", [task])
+    state, stream_ids = coordinator.dispatch_plan(plan)
+
+    assert stream_ids == ["1-0"]
+    assert state.released_task_ids == ["task-1"]

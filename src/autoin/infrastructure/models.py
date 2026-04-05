@@ -15,6 +15,7 @@ def utc_now() -> datetime:
 class EventType(StrEnum):
     MESSAGE_BUFFERED = "message_buffered"
     MESSAGE_DEBOUNCED = "message_debounced"
+    ADAPTER_REGISTERED = "adapter_registered"
     BRAIN_DECIDED = "brain_decided"
     CHECKER_DECIDED = "checker_decided"
     TASK_CREATED = "task_created"
@@ -202,6 +203,19 @@ class AdapterHeartbeatPayload(BaseModel):
     observed_at: datetime = Field(default_factory=utc_now)
 
 
+class AdapterManifestPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    adapter: str
+    platform: Platform
+    role: Literal["observer", "executor"]
+    version: str = "0.1.0"
+    host: str | None = None
+    supported_actions: list[str] = Field(default_factory=list)
+    metadata: dict[str, str] = Field(default_factory=dict)
+    registered_at: datetime = Field(default_factory=utc_now)
+
+
 class UnifiedEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
@@ -214,6 +228,7 @@ class UnifiedEvent(BaseModel):
         | CheckerDecisionPayload
         | IntakeDecisionPayload
         | MemoryCompactionPayload
+        | AdapterManifestPayload
         | TaskPayload
         | LockStatePayload
         | ErrorPayload

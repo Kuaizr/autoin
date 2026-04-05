@@ -2,6 +2,7 @@ from autoin.infrastructure.broker import RedisBroker
 from autoin.infrastructure.lock_manager import LockAcquisitionError, LockLease, RedisLockManager
 from autoin.infrastructure.models import (
     AdapterHeartbeatPayload,
+    AdapterManifestPayload,
     BrainPlanPayload,
     CheckerDecisionPayload,
     ConversationRef,
@@ -23,6 +24,7 @@ from autoin.infrastructure.models import (
 
 __all__ = [
     "AdapterHeartbeatPayload",
+    "AdapterManifestPayload",
     "BrainPlanPayload",
     "CheckerDecisionPayload",
     "ConversationRef",

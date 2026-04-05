@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from autoin.adapters.directory import AdapterDirectory, UnsupportedAdapterActionError
 from autoin.cognitive.brain import BrainAgent
 from autoin.cognitive.checker import CheckerAgent
 from autoin.infrastructure.broker import RedisBroker
@@ -35,11 +36,13 @@ class Coordinator:
         producer_name: str = "coordinator",
         brain: BrainAgent | None = None,
         checker: CheckerAgent | None = None,
+        adapter_directory: AdapterDirectory | None = None,
     ) -> None:
         self.broker = broker
         self.producer_name = producer_name
         self.brain = brain or BrainAgent()
         self.checker = checker or CheckerAgent()
+        self.adapter_directory = adapter_directory
 
     def create_plan(self, correlation_id: str, tasks: Iterable[TaskPayload]) -> TaskPlan:
         planned_tasks = sorted(tasks, key=lambda item: item.sequence)
@@ -73,6 +76,8 @@ class Coordinator:
                 continue
             if any(dependency not in completed for dependency in task.dependencies):
                 continue
+            if self.adapter_directory is not None:
+                self.adapter_directory.validate_task(task)
             created_event = UnifiedEvent(
                 event_type=EventType.TASK_CREATED,
                 metadata=EventMetadata(
