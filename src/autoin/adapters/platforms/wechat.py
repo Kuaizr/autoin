@@ -25,6 +25,8 @@ def render_dispatch_message(arguments: dict[str, object]) -> str:
     for key in sorted(extracted_fields):
         value = extracted_fields[key]
         lines.append(f"{key}: {value}")
+    if extracted_fields.get("customer_id"):
+        lines.append("instruction: 请联系客户并处理代打订单")
     if screenshot_ref:
         lines.append(f"screenshot_ref: {screenshot_ref}")
     if reason:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import re
 
 from autoin.adapters.directory import AdapterDirectory, UnsupportedAdapterActionError
 from autoin.cognitive.brain import BrainAgent
@@ -14,6 +15,7 @@ from autoin.infrastructure.models import (
     EventType,
     IntakeDecisionPayload,
     MemoryCompactionPayload,
+    Platform,
     SnapshotCapturedPayload,
     SnapshotRequestPayload,
     TaskKind,
@@ -217,12 +219,38 @@ class Coordinator:
         joined = " ".join(messages).lower()
         intent = "dispatch" if any(keyword in joined for keyword in ("地址", "电话", "下单", "货号", "发货")) else "reply"
         suggested_tasks = [TaskKind.CHECK, TaskKind.UI_ACTION] if intent == "dispatch" else [TaskKind.REPLY]
+        extracted_fields = self._extract_order_fields(messages)
+        dispatch_target_uid = None
+        reason = "keyword_router_v1"
+        if payload.conversation.platform == Platform.WECHAT and extracted_fields.get("customer_id"):
+            dispatch_target_uid = "文件传输助手"
+            reason = "wechat_gaming_broker_v1"
         return IntakeDecisionPayload(
             conversation=payload.conversation,
             intent=intent,
-            reason="keyword_router_v1",
+            reason=reason,
             suggested_tasks=suggested_tasks,
+            extracted_fields=extracted_fields,
+            dispatch_target_uid=dispatch_target_uid,
         )
+
+    @staticmethod
+    def _extract_order_fields(messages: list[str]) -> dict[str, str]:
+        full_text = "\n".join(messages)
+        extracted_fields: dict[str, str] = {}
+        customer_id_match = re.search(r"客户\s*id\s*是?\s*[:：]?\s*([A-Za-z0-9_-]+)", full_text, flags=re.IGNORECASE)
+        if customer_id_match:
+            extracted_fields["customer_id"] = customer_id_match.group(1)
+        item_code_match = re.search(r"货号\s*[:：]?\s*([A-Za-z0-9_-]+)", full_text, flags=re.IGNORECASE)
+        if item_code_match:
+            extracted_fields["item_code"] = item_code_match.group(1)
+        address_match = re.search(r"地址\s*[:：]?\s*([^\n,，。]+)", full_text)
+        if address_match:
+            extracted_fields["address"] = address_match.group(1).strip()
+        phone_match = re.search(r"电话\s*[:：]?\s*([0-9-]+)", full_text)
+        if phone_match:
+            extracted_fields["phone"] = phone_match.group(1)
+        return extracted_fields
 
     def build_and_dispatch_plan(
         self,

@@ -46,6 +46,20 @@ def test_render_dispatch_message_keeps_stable_field_order() -> None:
     ]
 
 
+def test_render_dispatch_message_appends_gaming_broker_instruction() -> None:
+    message = render_dispatch_message(
+        {
+            "source_platform": Platform.WECHAT,
+            "extracted_fields": {"customer_id": "abc123"},
+            "dispatch_target_uid": "文件传输助手",
+            "reason": "wechat_gaming_broker_v1",
+        }
+    )
+
+    assert "customer_id: abc123" in message
+    assert "instruction: 请联系客户并处理代打订单" in message
+
+
 def test_wechat_dispatch_handler_prefers_explicit_group_target() -> None:
     registry = build_wechat_action_registry()
     task = TaskPayload(

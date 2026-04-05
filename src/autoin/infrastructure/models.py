@@ -105,6 +105,8 @@ class IntakeDecisionPayload(BaseModel):
     intent: Literal["reply", "dispatch"]
     reason: str
     suggested_tasks: list[TaskKind] = Field(default_factory=list)
+    extracted_fields: dict[str, str] = Field(default_factory=dict)
+    dispatch_target_uid: str | None = None
     generated_at: datetime = Field(default_factory=utc_now)
 
 

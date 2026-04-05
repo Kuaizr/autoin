@@ -37,7 +37,11 @@ class BrainAgent:
             adapter=source_adapter,
             target=decision.conversation,
             action="capture_and_validate_order",
-            arguments={"reason": decision.reason},
+            arguments={
+                "reason": decision.reason,
+                "extracted_fields": dict(decision.extracted_fields),
+                "dispatch_target_uid": decision.dispatch_target_uid,
+            },
         )
         dispatch_task = TaskPayload(
             kind=TaskKind.UI_ACTION,
@@ -46,7 +50,12 @@ class BrainAgent:
             target=decision.conversation,
             action="send_dispatch_message",
             dependencies=[check_task.task_id],
-            arguments={"source_platform": decision.conversation.platform},
+            arguments={
+                "source_platform": decision.conversation.platform,
+                "dispatch_target_uid": decision.dispatch_target_uid,
+                "extracted_fields": dict(decision.extracted_fields),
+                "reason": decision.reason,
+            },
         )
         return [check_task, dispatch_task]
 

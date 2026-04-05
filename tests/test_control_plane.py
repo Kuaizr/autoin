@@ -95,6 +95,30 @@ def test_control_plane_routes_compacted_event_into_tasks() -> None:
     assert broker.tasks[0].action == "capture_and_validate_order"
 
 
+def test_control_plane_extracts_wechat_customer_id_and_dispatch_target() -> None:
+    broker = StubBroker()
+    service = build_service(broker)
+    event = UnifiedEvent(
+        event_type=EventType.MEMORY_COMPACTED,
+        metadata=EventMetadata(producer="test"),
+        payload=MemoryCompactionPayload(
+            conversation=ConversationRef(platform=Platform.WECHAT, user_id="kzr"),
+            compressed_summary="",
+            recent_messages=["我要下单这个产品，我的客户id是 abc123"],
+            latest_screenshot_ref=None,
+            source_message_count=1,
+        ),
+    )
+
+    result = service.process_event(event)
+
+    assert result["handled"] is True
+    assert result["action"] == "route_and_plan"
+    latest_state = list(broker.plan_states.values())[-1]
+    assert latest_state.plan.tasks[1].arguments["dispatch_target_uid"] == "文件传输助手"
+    assert latest_state.plan.tasks[1].arguments["extracted_fields"] == {"customer_id": "abc123"}
+
+
 def test_control_plane_releases_followup_tasks_after_action_completed() -> None:
     broker = StubBroker()
     service = build_service(broker)

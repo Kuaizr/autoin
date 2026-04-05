@@ -13,8 +13,10 @@ class CheckerAgent:
         extracted_fields: dict[str, str] | None = None,
     ) -> CheckerDecisionPayload:
         fields = extracted_fields or {}
-        required = ("address", "item_code")
-        approved = task.kind.name == "CHECK" and all(fields.get(key) for key in required)
+        generic_required = ("address", "item_code")
+        approved = task.kind.name == "CHECK" and (
+            all(fields.get(key) for key in generic_required) or bool(fields.get("customer_id"))
+        )
         reason = "checker_fields_present" if approved else "checker_missing_required_fields"
         if task.target is None:
             raise ValueError("Checker validation requires a task target conversation.")
