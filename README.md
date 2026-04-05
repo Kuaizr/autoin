@@ -42,3 +42,18 @@ uv run python -m autoin.tools.wechat_worker
 ```
 
 Use `--max-batches 1` if you want a finite run while testing task delivery from Redis.
+
+## Enqueue Dispatch Task
+
+On the Linux control plane, enqueue a WeChat dispatch task into Redis:
+
+```bash
+uv run python -m autoin.tools.enqueue_dispatch \
+  --source-user-id u1 \
+  --dispatch-target-uid 文件传输助手 \
+  --item-code TEST-REDIS-001 \
+  --address Shanghai \
+  --phone 13800138000
+```
+
+This is the simplest way to hand a real dispatch task to the Windows `wechat_worker`.
