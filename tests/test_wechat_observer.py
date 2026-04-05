@@ -177,6 +177,31 @@ def test_observe_wechat_customer_message_can_fallback_to_ocr(tmp_path: Path) -> 
     assert result["ocr_lines"] == ["我要下单这个产品，我的客户id是 abc123"]
     assert result["ocr_probe_results"][0]["mode"] == "full_window"
     assert result["ocr_probe_results"][1]["mode"] == "chat_region"
+    assert result["ocr_error"] is None
+
+
+def test_observe_wechat_customer_message_reports_missing_tesseract(tmp_path: Path) -> None:
+    broker = StubBroker()
+    driver = StubDriver(["Weixin", "0", "1048576"])
+
+    def raise_missing(*args, **kwargs):  # noqa: ANN001
+        raise FileNotFoundError("tesseract")
+
+    driver.run_tesseract_ocr = raise_missing
+
+    result = observe_wechat_customer_message(
+        "kzr",
+        broker=broker,
+        driver=driver,
+        state_file=tmp_path / "observer-state.json",
+        enable_ocr_fallback=True,
+        include_debug_texts=True,
+    )
+
+    assert result["status"] == "idle"
+    assert result["ocr_error"] is not None
+    assert "tesseract_not_found" in result["ocr_error"]
+    assert result["ocr_probe_results"][0]["error"].startswith("tesseract_not_found")
 
 
 def test_run_wechat_observer_loop_returns_poll_summary(tmp_path: Path) -> None:
