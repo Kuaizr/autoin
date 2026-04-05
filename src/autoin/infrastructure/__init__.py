@@ -3,6 +3,7 @@ from autoin.infrastructure.lock_manager import LockAcquisitionError, LockLease, 
 from autoin.infrastructure.models import (
     AdapterHeartbeatPayload,
     AdapterManifestPayload,
+    AdapterStatusPayload,
     BrainPlanPayload,
     CheckerDecisionPayload,
     ConversationRef,
@@ -25,6 +26,7 @@ from autoin.infrastructure.models import (
 __all__ = [
     "AdapterHeartbeatPayload",
     "AdapterManifestPayload",
+    "AdapterStatusPayload",
     "BrainPlanPayload",
     "CheckerDecisionPayload",
     "ConversationRef",

@@ -216,6 +216,15 @@ class AdapterManifestPayload(BaseModel):
     registered_at: datetime = Field(default_factory=utc_now)
 
 
+class AdapterStatusPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    adapter: str
+    online: bool
+    last_seen_at: datetime | None = None
+    reason: str
+
+
 class UnifiedEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
@@ -229,6 +238,7 @@ class UnifiedEvent(BaseModel):
         | IntakeDecisionPayload
         | MemoryCompactionPayload
         | AdapterManifestPayload
+        | AdapterStatusPayload
         | TaskPayload
         | LockStatePayload
         | ErrorPayload

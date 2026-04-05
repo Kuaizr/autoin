@@ -1,5 +1,14 @@
+from datetime import UTC, datetime, timedelta
+
 from autoin.adapters import AdapterDirectory, UnsupportedAdapterActionError
-from autoin.infrastructure.models import AdapterManifestPayload, Platform, TaskKind, TaskPayload
+from autoin.config import Settings
+from autoin.infrastructure.models import (
+    AdapterHeartbeatPayload,
+    AdapterManifestPayload,
+    Platform,
+    TaskKind,
+    TaskPayload,
+)
 
 
 class StubBroker:
@@ -13,12 +22,21 @@ class StubBroker:
 
 def test_adapter_directory_registers_manifest_and_validates_task() -> None:
     broker = StubBroker()
-    directory = AdapterDirectory(broker)
+    settings = Settings(redis_host="redis.internal.example.com", adapter_heartbeat_ttl_ms=30000)
+    directory = AdapterDirectory(broker, settings=settings)
     manifest = AdapterManifestPayload(
         adapter="wechat.executor",
         platform=Platform.WECHAT,
         role="executor",
         supported_actions=["send_dispatch_message"],
+    )
+    directory.mark_heartbeat(
+        AdapterHeartbeatPayload(
+            adapter="wechat.executor",
+            platform=Platform.WECHAT,
+            role="executor",
+            observed_at=datetime.now(UTC),
+        )
     )
 
     event = directory.register(manifest)
@@ -36,13 +54,22 @@ def test_adapter_directory_registers_manifest_and_validates_task() -> None:
 
 def test_adapter_directory_rejects_unknown_action() -> None:
     broker = StubBroker()
-    directory = AdapterDirectory(broker)
+    settings = Settings(redis_host="redis.internal.example.com", adapter_heartbeat_ttl_ms=30000)
+    directory = AdapterDirectory(broker, settings=settings)
     directory.register(
         AdapterManifestPayload(
             adapter="wechat.executor",
             platform=Platform.WECHAT,
             role="executor",
             supported_actions=["send_dispatch_message"],
+        )
+    )
+    directory.mark_heartbeat(
+        AdapterHeartbeatPayload(
+            adapter="wechat.executor",
+            platform=Platform.WECHAT,
+            role="executor",
+            observed_at=datetime.now(UTC),
         )
     )
 
@@ -58,3 +85,32 @@ def test_adapter_directory_rejects_unknown_action() -> None:
         pass
     else:
         raise AssertionError("Expected unsupported action validation to fail.")
+
+
+def test_adapter_directory_reports_offline_when_heartbeat_expires() -> None:
+    broker = StubBroker()
+    settings = Settings(redis_host="redis.internal.example.com", adapter_heartbeat_ttl_ms=1000)
+    directory = AdapterDirectory(broker, settings=settings)
+    directory.register(
+        AdapterManifestPayload(
+            adapter="wechat.executor",
+            platform=Platform.WECHAT,
+            role="executor",
+            supported_actions=["send_dispatch_message"],
+        )
+    )
+    heartbeat_time = datetime.now(UTC)
+    directory.mark_heartbeat(
+        AdapterHeartbeatPayload(
+            adapter="wechat.executor",
+            platform=Platform.WECHAT,
+            role="executor",
+            observed_at=heartbeat_time,
+        )
+    )
+
+    assert directory.is_online("wechat.executor", now=heartbeat_time + timedelta(milliseconds=500)) is True
+    status = directory.status("wechat.executor", now=heartbeat_time + timedelta(milliseconds=1500))
+
+    assert status.online is False
+    assert status.reason == "heartbeat_missing_or_expired"

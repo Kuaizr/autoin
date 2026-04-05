@@ -1,6 +1,8 @@
 from autoin.adapters import AdapterDirectory
+from autoin.config import Settings
 from autoin.coordinator import Coordinator, TaskDependencyError
 from autoin.infrastructure.models import (
+    AdapterHeartbeatPayload,
     AdapterManifestPayload,
     CheckerDecisionPayload,
     ConversationRef,
@@ -346,13 +348,23 @@ def test_checker_rejection_blocks_plan() -> None:
 
 def test_coordinator_validates_adapter_capabilities_before_releasing_task() -> None:
     broker = StubBroker()
-    directory = AdapterDirectory(broker)
+    directory = AdapterDirectory(
+        broker,
+        settings=Settings(redis_host="redis.internal.example.com", adapter_heartbeat_ttl_ms=30000),
+    )
     directory.register(
         AdapterManifestPayload(
             adapter="wechat.executor",
             platform=Platform.WECHAT,
             role="executor",
             supported_actions=["send_dispatch_message"],
+        )
+    )
+    directory.mark_heartbeat(
+        AdapterHeartbeatPayload(
+            adapter="wechat.executor",
+            platform=Platform.WECHAT,
+            role="executor",
         )
     )
     coordinator = Coordinator(broker, adapter_directory=directory)
