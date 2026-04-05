@@ -177,3 +177,26 @@ def test_unknown_window_profile_falls_back_to_generic_contract() -> None:
     assert profile.app == "custom_app"
     assert profile.title_patterns == ["custom_app"]
     assert profile.default_capture_mode == "main_window"
+
+
+def test_capture_live_wechat_chat_region_raises_when_image_backend_unavailable(monkeypatch) -> None:
+    class Window:
+        def capture_as_image(self):  # noqa: ANN202
+            return None
+
+        def window_text(self) -> str:
+            return "微信"
+
+    driver = object.__new__(PywinautoDriver)
+    driver.artifact_root = Path("artifacts") / "windows"
+    driver.enable_live_wechat = True
+
+    monkeypatch.setattr(driver, "_find_live_window", lambda app: Window())
+
+    try:
+        driver.capture_live_wechat_chat_region("kzr")
+    except DesktopAutomationError as exc:
+        assert exc.code == "capture_image_unavailable"
+        assert "Install Pillow" in str(exc)
+    else:
+        raise AssertionError("Expected capture_live_wechat_chat_region to fail without Pillow image support.")

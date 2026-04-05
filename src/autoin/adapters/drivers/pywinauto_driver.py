@@ -359,6 +359,13 @@ class PywinautoDriver(DesktopDriver):
         artifact_path = self.build_capture_artifact_path("wechat", target_uid, "chat_region")
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         image = window.capture_as_image()
+        if image is None:
+            raise DesktopAutomationError(
+                "capture_image_unavailable",
+                "WeChat screenshot capture is unavailable. Install Pillow with `uv sync --extra windows` on Windows.",
+                app="wechat",
+                target_uid=target_uid,
+            )
         width, height = image.size
         crop_box = (
             int(width * 0.28),
