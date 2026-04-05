@@ -26,6 +26,19 @@ def _build_worker_snapshot(consumer_name: str, executor: Any, processed_stream_i
     }
 
 
+def emit_worker_log(event: str, payload: dict[str, Any]) -> None:
+    print(
+        json.dumps(
+            {
+                "event": event,
+                **payload,
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+
+
 def build_wechat_worker(
     consumer_name: str,
     *,
@@ -63,6 +76,7 @@ def run_wechat_worker_once(
     broker: RedisBroker | None = None,
     lock_manager: RedisLockManager | None = None,
     settings: Settings | None = None,
+    emit_logs: bool = False,
 ) -> dict[str, Any]:
     worker, executor = build_wechat_worker(
         consumer_name=consumer_name,
@@ -72,8 +86,22 @@ def run_wechat_worker_once(
         settings=settings,
     )
     executor.start_listening()
+    if emit_logs:
+        emit_worker_log(
+            "worker_started",
+            {
+                "consumer_name": consumer_name,
+                "mode": "once",
+                "count": count,
+                "block_ms": block_ms,
+                "driver_mode": "pywinauto" if prefer_pywinauto else "mock_windows",
+            },
+        )
     processed = worker.poll_once(count=count, block_ms=block_ms)
-    return _build_worker_snapshot(consumer_name, executor, processed)
+    snapshot = _build_worker_snapshot(consumer_name, executor, processed)
+    if emit_logs:
+        emit_worker_log("worker_batch_processed", snapshot)
+    return snapshot
 
 
 def run_wechat_worker_loop(
@@ -86,6 +114,7 @@ def run_wechat_worker_loop(
     broker: RedisBroker | None = None,
     lock_manager: RedisLockManager | None = None,
     settings: Settings | None = None,
+    emit_logs: bool = False,
 ) -> dict[str, Any]:
     worker, executor = build_wechat_worker(
         consumer_name=consumer_name,
@@ -95,6 +124,18 @@ def run_wechat_worker_loop(
         settings=settings,
     )
     executor.start_listening()
+    if emit_logs:
+        emit_worker_log(
+            "worker_started",
+            {
+                "consumer_name": consumer_name,
+                "mode": "loop",
+                "count": count,
+                "block_ms": block_ms,
+                "max_batches": max_batches,
+                "driver_mode": "pywinauto" if prefer_pywinauto else "mock_windows",
+            },
+        )
     processed_stream_ids: list[str] = []
     batch_summaries: list[dict[str, Any]] = []
     batches = 0
@@ -111,6 +152,8 @@ def run_wechat_worker_loop(
                 "last_rollback_result": executor.last_rollback_result,
             }
         )
+        if emit_logs:
+            emit_worker_log("worker_batch_processed", batch_summaries[-1])
         if max_batches is not None and batches >= max_batches:
             break
     return _build_worker_snapshot(
@@ -130,6 +173,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-batches", type=int, default=None, help="Stop after N poll batches. Omit for an endless worker loop.")
     parser.add_argument("--once", action="store_true", help="Run a single poll batch and exit.")
     parser.add_argument("--mock-driver", action="store_true", help="Use the mock Windows driver instead of pywinauto.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-batch worker logs and only print the final JSON summary.")
     return parser.parse_args(argv)
 
 
@@ -141,6 +185,7 @@ def main(argv: list[str] | None = None) -> int:
             prefer_pywinauto=not args.mock_driver,
             count=args.count,
             block_ms=args.block_ms,
+            emit_logs=not args.quiet,
         )
     else:
         result = run_wechat_worker_loop(
@@ -149,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
             count=args.count,
             block_ms=args.block_ms,
             max_batches=args.max_batches,
+            emit_logs=not args.quiet,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

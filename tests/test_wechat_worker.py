@@ -4,6 +4,7 @@ from autoin.infrastructure.lock_manager import LockLease
 from autoin.infrastructure.models import ConversationRef, Platform, TaskKind, TaskPayload
 from autoin.tools.wechat_worker import (
     default_consumer_name,
+    emit_worker_log,
     main,
     run_wechat_worker_loop,
     run_wechat_worker_once,
@@ -90,6 +91,25 @@ def test_run_wechat_worker_once_processes_single_batch() -> None:
     assert broker.acked == ["1-0"]
 
 
+def test_run_wechat_worker_once_emits_logs(capsys) -> None:
+    broker = StubBroker()
+    broker.tasks = [("1-0", build_dispatch_task())]
+
+    run_wechat_worker_once(
+        consumer_name="worker-1",
+        prefer_pywinauto=False,
+        count=1,
+        block_ms=1,
+        broker=broker,
+        lock_manager=StubLockManager(),
+        emit_logs=True,
+    )
+    captured = capsys.readouterr()
+
+    assert '"event": "worker_started"' in captured.out
+    assert '"event": "worker_batch_processed"' in captured.out
+
+
 def test_run_wechat_worker_loop_stops_after_max_batches() -> None:
     broker = StubBroker()
     broker.tasks = [("1-0", build_dispatch_task())]
@@ -114,6 +134,13 @@ def test_default_consumer_name_uses_hostname() -> None:
     assert default_consumer_name().startswith("wechat-worker-")
 
 
+def test_emit_worker_log_prints_json(capsys) -> None:
+    emit_worker_log("worker_started", {"consumer_name": "worker-1"})
+    captured = capsys.readouterr()
+
+    assert captured.out.strip() == '{"event": "worker_started", "consumer_name": "worker-1"}'
+
+
 def test_wechat_worker_main_supports_mock_driver(capsys, monkeypatch) -> None:
     monkeypatch.setattr(
         "autoin.tools.wechat_worker.run_wechat_worker_once",
@@ -126,7 +153,7 @@ def test_wechat_worker_main_supports_mock_driver(capsys, monkeypatch) -> None:
         },
     )
 
-    exit_code = main(["--once", "--consumer-name", "worker-1", "--mock-driver"])
+    exit_code = main(["--once", "--consumer-name", "worker-1", "--mock-driver", "--quiet"])
     captured = capsys.readouterr()
 
     assert exit_code == 0
