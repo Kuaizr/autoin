@@ -15,6 +15,7 @@ def utc_now() -> datetime:
 class EventType(StrEnum):
     MESSAGE_BUFFERED = "message_buffered"
     MESSAGE_DEBOUNCED = "message_debounced"
+    BRAIN_DECIDED = "brain_decided"
     TASK_CREATED = "task_created"
     TASK_STATUS_CHANGED = "task_status_changed"
     ACTION_REQUESTED = "action_requested"
@@ -105,6 +106,17 @@ class IntakeDecisionPayload(BaseModel):
     generated_at: datetime = Field(default_factory=utc_now)
 
 
+class BrainPlanPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: ConversationRef
+    intent: Literal["reply", "dispatch"]
+    plan_id: str
+    task_ids: list[str] = Field(default_factory=list)
+    rationale: str
+    generated_at: datetime = Field(default_factory=utc_now)
+
+
 class TaskPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -185,6 +197,7 @@ class UnifiedEvent(BaseModel):
     metadata: EventMetadata
     payload: (
         MessagePayload
+        | BrainPlanPayload
         | IntakeDecisionPayload
         | MemoryCompactionPayload
         | TaskPayload

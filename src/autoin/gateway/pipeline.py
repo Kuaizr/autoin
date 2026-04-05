@@ -55,3 +55,11 @@ class GatewayPipeline:
         )
         self.coordinator.broker.publish(routed_event)
         return routed_event
+
+    def route_and_plan(self, event: UnifiedEvent) -> tuple[UnifiedEvent, list[str]]:
+        routed_event = self.route_compacted_event(event)
+        plan, _, stream_ids, _ = self.coordinator.build_and_dispatch_plan(
+            routed_event.payload,
+            correlation_id=routed_event.metadata.correlation_id,
+        )
+        return routed_event, stream_ids

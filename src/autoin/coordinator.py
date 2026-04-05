@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from autoin.cognitive.brain import BrainAgent
 from autoin.infrastructure.broker import RedisBroker
 from autoin.infrastructure.models import (
+    BrainPlanPayload,
     ErrorPayload,
     EventMetadata,
     EventType,
@@ -25,9 +27,15 @@ class TaskDependencyError(ValueError):
 class Coordinator:
     """Serial task planner and dispatcher for the Linux control plane."""
 
-    def __init__(self, broker: RedisBroker, producer_name: str = "coordinator") -> None:
+    def __init__(
+        self,
+        broker: RedisBroker,
+        producer_name: str = "coordinator",
+        brain: BrainAgent | None = None,
+    ) -> None:
         self.broker = broker
         self.producer_name = producer_name
+        self.brain = brain or BrainAgent()
 
     def create_plan(self, correlation_id: str, tasks: Iterable[TaskPayload]) -> TaskPlan:
         planned_tasks = sorted(tasks, key=lambda item: item.sequence)
@@ -127,6 +135,27 @@ class Coordinator:
             reason="keyword_router_v1",
             suggested_tasks=suggested_tasks,
         )
+
+    def build_and_dispatch_plan(
+        self,
+        decision: IntakeDecisionPayload,
+        correlation_id: str,
+    ) -> tuple[TaskPlan, TaskPlanState, list[str], BrainPlanPayload]:
+        tasks = self.brain.build_tasks(decision)
+        plan = self.create_plan(correlation_id=correlation_id, tasks=tasks)
+        brain_payload = self.brain.build_plan_payload(decision, plan)
+        self.broker.publish(
+            UnifiedEvent(
+                event_type=EventType.BRAIN_DECIDED,
+                metadata=EventMetadata(
+                    producer=self.producer_name,
+                    correlation_id=correlation_id,
+                ),
+                payload=brain_payload,
+            )
+        )
+        state, stream_ids = self.dispatch_plan(plan)
+        return plan, state, stream_ids, brain_payload
 
     def mark_task_status(
         self,
