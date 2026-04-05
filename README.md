@@ -85,3 +85,25 @@ uv run python -m autoin.tools.wechat_intake \
 ```
 
 Run this while `autoin.tools.control_plane` and the Windows `autoin.tools.wechat_worker` are both running to drive the full WeChat-to-WeChat dispatch flow.
+
+## WeChat Observer
+
+If your Windows WeChat build exposes chat text via UI Automation, you can observe the current open conversation directly:
+
+```bash
+uv run python -m autoin.tools.wechat_observer \
+  --customer-user-id kzr \
+  --poll-interval-seconds 2
+```
+
+Some newer WeChat desktop builds only expose the outer Qt shell to UI Automation. In that case, install `tesseract` on Windows and enable OCR fallback:
+
+```bash
+uv run python -m autoin.tools.wechat_observer \
+  --customer-user-id kzr \
+  --poll-interval-seconds 2 \
+  --ocr-fallback \
+  --debug-visible-texts
+```
+
+If `tesseract.exe` is not on `PATH`, pass it explicitly with `--tesseract-cmd`.

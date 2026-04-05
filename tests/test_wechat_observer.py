@@ -4,6 +4,7 @@ from pathlib import Path
 from autoin.adapters.drivers import WindowReference
 from autoin.infrastructure.models import EventType
 from autoin.tools.wechat_observer import (
+    extract_ocr_lines,
     load_observer_state,
     main,
     normalize_visible_texts,
@@ -38,6 +39,22 @@ class StubDriver:
             "texts": list(self.texts),
         }
 
+    def capture_live_wechat_chat_region(self, target_uid: str | None = None) -> dict[str, object]:
+        return {
+            "artifact_path": Path("artifacts") / "windows" / "wechat" / "chat_region" / "probe.png",
+            "window": WindowReference(
+                app="wechat",
+                target_uid=target_uid,
+                backend="uia",
+                locator="微信",
+                locator_status="resolved",
+            ),
+        }
+
+    def run_tesseract_ocr(self, image_path: Path, *, tesseract_cmd: str = "tesseract", languages: str = "chi_sim+eng", psm: int = 6) -> str:
+        del image_path, tesseract_cmd, languages, psm
+        return ""
+
 
 def test_normalize_visible_texts_compacts_blanks_and_repeats() -> None:
     assert normalize_visible_texts(["", "  hello  ", "hello", "foo\nbar"]) == ["hello", "foo bar"]
@@ -50,6 +67,10 @@ def test_select_latest_customer_message_skips_noise() -> None:
     )
 
     assert selected == "我要下单这个产品，我的客户id是 abc123"
+
+
+def test_extract_ocr_lines_splits_non_empty_lines() -> None:
+    assert extract_ocr_lines("abc123\n\n文件传输助手\n") == ["abc123", "文件传输助手"]
 
 
 def test_observe_wechat_customer_message_emits_once_per_new_message(tmp_path: Path) -> None:
@@ -103,6 +124,25 @@ def test_observe_wechat_customer_message_can_include_debug_texts(tmp_path: Path)
 
     assert result["status"] == "emitted"
     assert result["visible_texts"] == ["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]
+
+
+def test_observe_wechat_customer_message_can_fallback_to_ocr(tmp_path: Path) -> None:
+    broker = StubBroker()
+    driver = StubDriver(["Weixin", "0", "1048576"])
+    driver.run_tesseract_ocr = lambda *args, **kwargs: "我要下单这个产品，我的客户id是 abc123"
+
+    result = observe_wechat_customer_message(
+        "kzr",
+        broker=broker,
+        driver=driver,
+        state_file=tmp_path / "observer-state.json",
+        enable_ocr_fallback=True,
+        include_debug_texts=True,
+    )
+
+    assert result["status"] == "emitted"
+    assert result["observed_message"] == "我要下单这个产品，我的客户id是 abc123"
+    assert result["ocr_lines"] == ["我要下单这个产品，我的客户id是 abc123"]
 
 
 def test_run_wechat_observer_loop_returns_poll_summary(tmp_path: Path) -> None:

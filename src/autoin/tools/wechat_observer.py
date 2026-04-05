@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from autoin.infrastructure import ConversationRef, Platform, RedisBroker
 
 NOISE_TEXTS = {
     "微信",
+    "Weixin",
     "聊天信息",
     "表情",
     "表情(E)",
@@ -23,6 +25,7 @@ NOISE_TEXTS = {
     "输入",
 }
 TIMESTAMP_PATTERN = re.compile(r"^(昨天|前天|\d{1,2}:\d{2}|\d{4}/\d{1,2}/\d{1,2}.*)$")
+NUMERIC_NOISE_PATTERN = re.compile(r"^\d+$")
 DEFAULT_STATE_FILE = Path(".autoin") / "wechat_observer_state.json"
 
 
@@ -39,7 +42,12 @@ def normalize_visible_texts(texts: list[str]) -> list[str]:
 
 
 def is_noise_text(text: str, customer_user_id: str) -> bool:
-    return text in NOISE_TEXTS or text == customer_user_id or bool(TIMESTAMP_PATTERN.match(text))
+    return (
+        text in NOISE_TEXTS
+        or text == customer_user_id
+        or bool(TIMESTAMP_PATTERN.match(text))
+        or bool(NUMERIC_NOISE_PATTERN.match(text))
+    )
 
 
 def select_latest_customer_message(texts: list[str], customer_user_id: str) -> str | None:
@@ -48,6 +56,10 @@ def select_latest_customer_message(texts: list[str], customer_user_id: str) -> s
             continue
         return text
     return None
+
+
+def extract_ocr_lines(ocr_text: str) -> list[str]:
+    return normalize_visible_texts([line for line in ocr_text.splitlines() if line.strip()])
 
 
 def load_observer_state(state_file: Path) -> dict[str, dict[str, str]]:
@@ -69,6 +81,8 @@ def observe_wechat_customer_message(
     driver: Any | None = None,
     state_file: Path = DEFAULT_STATE_FILE,
     include_debug_texts: bool = False,
+    enable_ocr_fallback: bool = False,
+    tesseract_cmd: str = "tesseract",
 ) -> dict[str, Any]:
     resolved_settings = settings
     if resolved_settings is None and broker is None:
@@ -78,6 +92,17 @@ def observe_wechat_customer_message(
     observer = ObserverAdapter("wechat.observer", Platform.WECHAT, selected_broker)
     observation = selected_driver.observe_wechat_conversation(target_uid=customer_user_id)
     latest_message = select_latest_customer_message(observation.get("texts", []), customer_user_id)
+    ocr_lines: list[str] = []
+    artifact_path = None
+    if latest_message is None and enable_ocr_fallback:
+        try:
+            capture = selected_driver.capture_live_wechat_chat_region(target_uid=customer_user_id)
+            artifact_path = capture.get("artifact_path")
+            ocr_text = selected_driver.run_tesseract_ocr(Path(artifact_path), tesseract_cmd=tesseract_cmd)
+            ocr_lines = extract_ocr_lines(ocr_text)
+            latest_message = select_latest_customer_message(ocr_lines, customer_user_id)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            ocr_lines = []
     conversation = ConversationRef(platform=Platform.WECHAT, user_id=customer_user_id)
     state = load_observer_state(state_file)
     previous_message = state.get(conversation.uid, {}).get("last_message")
@@ -92,6 +117,8 @@ def observe_wechat_customer_message(
         }
         if include_debug_texts:
             result["visible_texts"] = observation.get("texts", [])
+            result["ocr_lines"] = ocr_lines
+            result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
         return result
 
     if latest_message == previous_message:
@@ -104,6 +131,8 @@ def observe_wechat_customer_message(
         }
         if include_debug_texts:
             result["visible_texts"] = observation.get("texts", [])
+            result["ocr_lines"] = ocr_lines
+            result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
         return result
 
     event = observer.emit_messages(conversation=conversation, messages=[latest_message])
@@ -120,6 +149,8 @@ def observe_wechat_customer_message(
     }
     if include_debug_texts:
         result["visible_texts"] = observation.get("texts", [])
+        result["ocr_lines"] = ocr_lines
+        result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
     return result
 
 
@@ -134,6 +165,8 @@ def run_wechat_observer_loop(
     state_file: Path = DEFAULT_STATE_FILE,
     emit_logs: bool = False,
     include_debug_texts: bool = False,
+    enable_ocr_fallback: bool = False,
+    tesseract_cmd: str = "tesseract",
 ) -> dict[str, Any]:
     polls = 0
     snapshots: list[dict[str, Any]] = []
@@ -145,6 +178,8 @@ def run_wechat_observer_loop(
             driver=driver,
             state_file=state_file,
             include_debug_texts=include_debug_texts,
+            enable_ocr_fallback=enable_ocr_fallback,
+            tesseract_cmd=tesseract_cmd,
         )
         snapshots.append(snapshot)
         polls += 1
@@ -176,6 +211,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--state-file", default=str(DEFAULT_STATE_FILE))
     parser.add_argument("--once", action="store_true", help="Observe once and exit.")
     parser.add_argument("--debug-visible-texts", action="store_true", help="Include extracted visible texts in observer output for Windows UI debugging.")
+    parser.add_argument("--ocr-fallback", action="store_true", help="Fallback to Tesseract OCR on a cropped WeChat chat screenshot when UIA text extraction fails.")
+    parser.add_argument("--tesseract-cmd", default="tesseract")
     parser.add_argument("--quiet", action="store_true", help="Suppress per-poll logs and only print the final JSON summary.")
     return parser.parse_args(argv)
 
@@ -188,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
             args.customer_user_id,
             state_file=state_file,
             include_debug_texts=args.debug_visible_texts,
+            enable_ocr_fallback=args.ocr_fallback,
+            tesseract_cmd=args.tesseract_cmd,
         )
     else:
         result = run_wechat_observer_loop(
@@ -197,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
             state_file=state_file,
             emit_logs=not args.quiet,
             include_debug_texts=args.debug_visible_texts,
+            enable_ocr_fallback=args.ocr_fallback,
+            tesseract_cmd=args.tesseract_cmd,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

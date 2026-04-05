@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+import subprocess
 from sys import platform as sys_platform
 import re
 import time
@@ -352,6 +353,59 @@ class PywinautoDriver(DesktopDriver):
         safe_target = (target_uid or "broadcast").replace("/", "_").replace("\\", "_")
         filename = f"{app}_{safe_target}_{mode}_{timestamp}.png"
         return self.artifact_root / app / mode / filename
+
+    def capture_live_wechat_chat_region(self, target_uid: str | None = None) -> dict[str, object]:
+        window = self._find_live_window("wechat")
+        artifact_path = self.build_capture_artifact_path("wechat", target_uid, "chat_region")
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        image = window.capture_as_image()
+        width, height = image.size
+        crop_box = (
+            int(width * 0.28),
+            int(height * 0.10),
+            int(width * 0.98),
+            int(height * 0.82),
+        )
+        cropped = image.crop(crop_box)
+        cropped.save(artifact_path)
+        return {
+            "driver": "pywinauto",
+            "app": "wechat",
+            "target_uid": target_uid,
+            "artifact_path": artifact_path,
+            "crop_box": crop_box,
+            "window": WindowReference(
+                app="wechat",
+                target_uid=target_uid,
+                backend=get_window_profile("wechat").backend,
+                locator=window.window_text() or "wechat_window",
+                locator_status="resolved",
+            ),
+        }
+
+    @staticmethod
+    def run_tesseract_ocr(
+        image_path: Path,
+        *,
+        tesseract_cmd: str = "tesseract",
+        languages: str = "chi_sim+eng",
+        psm: int = 6,
+    ) -> str:
+        completed = subprocess.run(
+            [
+                tesseract_cmd,
+                str(image_path),
+                "stdout",
+                "-l",
+                languages,
+                "--psm",
+                str(psm),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return completed.stdout
 
     def send_message(self, app: str, target_uid: str | None, message: str) -> DriverActionResult:
         if app == "wechat" and getattr(self, "enable_live_wechat", False):  # pragma: no branch - simple switch
