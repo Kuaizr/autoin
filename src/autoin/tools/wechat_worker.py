@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import argparse
+import json
+import socket
+from typing import Any
+
+from autoin.adapters import TaskWorker, build_executor_adapter
+from autoin.config import Settings, get_settings
+from autoin.infrastructure import Platform, RedisBroker, RedisLockManager
+
+
+def default_consumer_name() -> str:
+    hostname = socket.gethostname()
+    return f"wechat-worker-{hostname}"
+
+
+def build_wechat_worker(
+    consumer_name: str,
+    *,
+    prefer_pywinauto: bool = True,
+    broker: RedisBroker | None = None,
+    lock_manager: RedisLockManager | None = None,
+    settings: Settings | None = None,
+) -> tuple[TaskWorker, Any]:
+    resolved_settings = settings
+    if resolved_settings is None and (broker is None or lock_manager is None):
+        resolved_settings = get_settings()
+    selected_broker = broker or RedisBroker(resolved_settings)
+    selected_lock_manager = lock_manager or RedisLockManager(resolved_settings)
+    executor = build_executor_adapter(
+        adapter_name="wechat.executor",
+        platform_name=Platform.WECHAT,
+        broker=selected_broker,
+        lock_manager=selected_lock_manager,
+        prefer_pywinauto=prefer_pywinauto,
+    )
+    worker = TaskWorker(
+        broker=selected_broker,
+        executor=executor,
+        consumer_name=consumer_name,
+    )
+    return worker, executor
+
+
+def run_wechat_worker_once(
+    consumer_name: str,
+    *,
+    prefer_pywinauto: bool = True,
+    count: int = 10,
+    block_ms: int = 1000,
+    broker: RedisBroker | None = None,
+    lock_manager: RedisLockManager | None = None,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    worker, executor = build_wechat_worker(
+        consumer_name=consumer_name,
+        prefer_pywinauto=prefer_pywinauto,
+        broker=broker,
+        lock_manager=lock_manager,
+        settings=settings,
+    )
+    executor.start_listening()
+    processed = worker.poll_once(count=count, block_ms=block_ms)
+    return {
+        "consumer_name": consumer_name,
+        "processed_stream_ids": processed,
+        "last_action_result": executor.last_action_result,
+        "last_rollback_result": executor.last_rollback_result,
+    }
+
+
+def run_wechat_worker_loop(
+    consumer_name: str,
+    *,
+    prefer_pywinauto: bool = True,
+    count: int = 10,
+    block_ms: int = 1000,
+    max_batches: int | None = None,
+    broker: RedisBroker | None = None,
+    lock_manager: RedisLockManager | None = None,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
+    worker, executor = build_wechat_worker(
+        consumer_name=consumer_name,
+        prefer_pywinauto=prefer_pywinauto,
+        broker=broker,
+        lock_manager=lock_manager,
+        settings=settings,
+    )
+    executor.start_listening()
+    processed_stream_ids: list[str] = []
+    batches = 0
+    while True:
+        processed_stream_ids.extend(worker.poll_once(count=count, block_ms=block_ms))
+        batches += 1
+        if max_batches is not None and batches >= max_batches:
+            break
+    return {
+        "consumer_name": consumer_name,
+        "batches": batches,
+        "processed_stream_ids": processed_stream_ids,
+        "last_action_result": executor.last_action_result,
+        "last_rollback_result": executor.last_rollback_result,
+    }
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the Windows WeChat executor task worker.")
+    parser.add_argument("--consumer-name", default=default_consumer_name())
+    parser.add_argument("--count", type=int, default=10)
+    parser.add_argument("--block-ms", type=int, default=1000)
+    parser.add_argument("--max-batches", type=int, default=None, help="Stop after N poll batches. Omit for an endless worker loop.")
+    parser.add_argument("--once", action="store_true", help="Run a single poll batch and exit.")
+    parser.add_argument("--mock-driver", action="store_true", help="Use the mock Windows driver instead of pywinauto.")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.once:
+        result = run_wechat_worker_once(
+            consumer_name=args.consumer_name,
+            prefer_pywinauto=not args.mock_driver,
+            count=args.count,
+            block_ms=args.block_ms,
+        )
+    else:
+        result = run_wechat_worker_loop(
+            consumer_name=args.consumer_name,
+            prefer_pywinauto=not args.mock_driver,
+            count=args.count,
+            block_ms=args.block_ms,
+            max_batches=args.max_batches,
+        )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

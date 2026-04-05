@@ -26,3 +26,19 @@ uv run python -m autoin.tools.wechat_smoke \
 ```
 
 Use `--mock-driver` if you only want to verify the task and rendering path without touching the desktop UI.
+
+## WeChat Worker
+
+On the Windows execution node, run a WeChat executor worker that consumes Redis tasks:
+
+```bash
+uv run python -m autoin.tools.wechat_worker --once --mock-driver
+```
+
+For a real Windows worker using `pywinauto`, keep WeChat Desktop open and run:
+
+```bash
+uv run python -m autoin.tools.wechat_worker
+```
+
+Use `--max-batches 1` if you want a finite run while testing task delivery from Redis.

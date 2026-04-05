@@ -10,7 +10,10 @@ from autoin.infrastructure.models import TaskPayload
 def render_dispatch_message(arguments: dict[str, object]) -> str:
     source_platform = str(arguments.get("source_platform", "unknown"))
     extracted_fields = arguments.get("extracted_fields", {})
-    screenshot_ref = str(arguments.get("screenshot_ref", "")).strip()
+    raw_screenshot_ref = arguments.get("screenshot_ref")
+    screenshot_ref = ""
+    if raw_screenshot_ref not in (None, ""):
+        screenshot_ref = str(raw_screenshot_ref).strip()
     reason = str(arguments.get("reason", "")).strip()
     if not isinstance(extracted_fields, dict):
         extracted_fields = {}
