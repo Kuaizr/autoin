@@ -62,6 +62,33 @@ def extract_ocr_lines(ocr_text: str) -> list[str]:
     return normalize_visible_texts([line for line in ocr_text.splitlines() if line.strip()])
 
 
+def run_ocr_fallback_probes(
+    driver: Any,
+    customer_user_id: str,
+    *,
+    tesseract_cmd: str,
+) -> tuple[str | None, list[str], list[dict[str, object]], str | None]:
+    debug_probes: list[dict[str, object]] = []
+    last_artifact_path: str | None = None
+    for probe in driver.capture_live_wechat_ocr_probes(target_uid=customer_user_id):
+        artifact_path = Path(probe["artifact_path"])
+        last_artifact_path = str(artifact_path)
+        ocr_text = driver.run_tesseract_ocr(artifact_path, tesseract_cmd=tesseract_cmd)
+        ocr_lines = extract_ocr_lines(ocr_text)
+        debug_probes.append(
+            {
+                "mode": probe["mode"],
+                "artifact_path": str(artifact_path),
+                "crop_box": probe["crop_box"],
+                "ocr_lines": ocr_lines,
+            }
+        )
+        latest_message = select_latest_customer_message(ocr_lines, customer_user_id)
+        if latest_message is not None:
+            return latest_message, ocr_lines, debug_probes, last_artifact_path
+    return None, [], debug_probes, last_artifact_path
+
+
 def load_observer_state(state_file: Path) -> dict[str, dict[str, str]]:
     if not state_file.exists():
         return {}
@@ -94,15 +121,17 @@ def observe_wechat_customer_message(
     latest_message = select_latest_customer_message(observation.get("texts", []), customer_user_id)
     ocr_lines: list[str] = []
     artifact_path = None
+    ocr_probe_results: list[dict[str, object]] = []
     if latest_message is None and enable_ocr_fallback:
         try:
-            capture = selected_driver.capture_live_wechat_chat_region(target_uid=customer_user_id)
-            artifact_path = capture.get("artifact_path")
-            ocr_text = selected_driver.run_tesseract_ocr(Path(artifact_path), tesseract_cmd=tesseract_cmd)
-            ocr_lines = extract_ocr_lines(ocr_text)
-            latest_message = select_latest_customer_message(ocr_lines, customer_user_id)
+            latest_message, ocr_lines, ocr_probe_results, artifact_path = run_ocr_fallback_probes(
+                selected_driver,
+                customer_user_id,
+                tesseract_cmd=tesseract_cmd,
+            )
         except (FileNotFoundError, subprocess.CalledProcessError):
             ocr_lines = []
+            ocr_probe_results = []
     conversation = ConversationRef(platform=Platform.WECHAT, user_id=customer_user_id)
     state = load_observer_state(state_file)
     previous_message = state.get(conversation.uid, {}).get("last_message")
@@ -119,6 +148,7 @@ def observe_wechat_customer_message(
             result["visible_texts"] = observation.get("texts", [])
             result["ocr_lines"] = ocr_lines
             result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
+            result["ocr_probe_results"] = ocr_probe_results
         return result
 
     if latest_message == previous_message:
@@ -133,6 +163,7 @@ def observe_wechat_customer_message(
             result["visible_texts"] = observation.get("texts", [])
             result["ocr_lines"] = ocr_lines
             result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
+            result["ocr_probe_results"] = ocr_probe_results
         return result
 
     event = observer.emit_messages(conversation=conversation, messages=[latest_message])
@@ -151,6 +182,7 @@ def observe_wechat_customer_message(
         result["visible_texts"] = observation.get("texts", [])
         result["ocr_lines"] = ocr_lines
         result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
+        result["ocr_probe_results"] = ocr_probe_results
     return result
 
 

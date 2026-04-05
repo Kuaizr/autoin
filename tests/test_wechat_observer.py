@@ -51,6 +51,34 @@ class StubDriver:
             ),
         }
 
+    def capture_live_wechat_ocr_probes(self, target_uid: str | None = None) -> list[dict[str, object]]:
+        return [
+            {
+                "mode": "full_window",
+                "artifact_path": Path("artifacts") / "windows" / "wechat" / "full_window" / "probe.png",
+                "crop_box": (0, 0, 100, 100),
+                "window": WindowReference(
+                    app="wechat",
+                    target_uid=target_uid,
+                    backend="uia",
+                    locator="微信",
+                    locator_status="resolved",
+                ),
+            },
+            {
+                "mode": "chat_region",
+                "artifact_path": Path("artifacts") / "windows" / "wechat" / "chat_region" / "probe.png",
+                "crop_box": (10, 10, 90, 90),
+                "window": WindowReference(
+                    app="wechat",
+                    target_uid=target_uid,
+                    backend="uia",
+                    locator="微信",
+                    locator_status="resolved",
+                ),
+            },
+        ]
+
     def run_tesseract_ocr(self, image_path: Path, *, tesseract_cmd: str = "tesseract", languages: str = "chi_sim+eng", psm: int = 6) -> str:
         del image_path, tesseract_cmd, languages, psm
         return ""
@@ -129,7 +157,11 @@ def test_observe_wechat_customer_message_can_include_debug_texts(tmp_path: Path)
 def test_observe_wechat_customer_message_can_fallback_to_ocr(tmp_path: Path) -> None:
     broker = StubBroker()
     driver = StubDriver(["Weixin", "0", "1048576"])
-    driver.run_tesseract_ocr = lambda *args, **kwargs: "我要下单这个产品，我的客户id是 abc123"
+    driver.run_tesseract_ocr = lambda image_path, **kwargs: (
+        ""
+        if "full_window" in str(image_path)
+        else "我要下单这个产品，我的客户id是 abc123"
+    )
 
     result = observe_wechat_customer_message(
         "kzr",
@@ -143,6 +175,8 @@ def test_observe_wechat_customer_message_can_fallback_to_ocr(tmp_path: Path) -> 
     assert result["status"] == "emitted"
     assert result["observed_message"] == "我要下单这个产品，我的客户id是 abc123"
     assert result["ocr_lines"] == ["我要下单这个产品，我的客户id是 abc123"]
+    assert result["ocr_probe_results"][0]["mode"] == "full_window"
+    assert result["ocr_probe_results"][1]["mode"] == "chat_region"
 
 
 def test_run_wechat_observer_loop_returns_poll_summary(tmp_path: Path) -> None:

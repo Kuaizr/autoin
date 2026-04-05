@@ -390,6 +390,46 @@ class PywinautoDriver(DesktopDriver):
             ),
         }
 
+    def capture_live_wechat_ocr_probes(self, target_uid: str | None = None) -> list[dict[str, object]]:
+        window = self._find_live_window("wechat")
+        image = window.capture_as_image()
+        if image is None:
+            raise DesktopAutomationError(
+                "capture_image_unavailable",
+                "WeChat screenshot capture is unavailable. Install Pillow with `uv sync --extra windows` on Windows.",
+                app="wechat",
+                target_uid=target_uid,
+            )
+        width, height = image.size
+        profiles = [
+            ("full_window", (0, 0, width, height)),
+            ("right_panel", (int(width * 0.24), 0, width, height)),
+            ("chat_region", (int(width * 0.28), int(height * 0.10), int(width * 0.98), int(height * 0.82))),
+            ("chat_dense", (int(width * 0.34), int(height * 0.12), int(width * 0.94), int(height * 0.72))),
+            ("latest_messages", (int(width * 0.34), int(height * 0.16), int(width * 0.94), int(height * 0.56))),
+        ]
+        probes: list[dict[str, object]] = []
+        for mode, crop_box in profiles:
+            artifact_path = self.build_capture_artifact_path("wechat", target_uid, mode)
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            cropped = image.crop(crop_box)
+            cropped.save(artifact_path)
+            probes.append(
+                {
+                    "mode": mode,
+                    "artifact_path": artifact_path,
+                    "crop_box": crop_box,
+                    "window": WindowReference(
+                        app="wechat",
+                        target_uid=target_uid,
+                        backend=get_window_profile("wechat").backend,
+                        locator=window.window_text() or "wechat_window",
+                        locator_status="resolved",
+                    ),
+                }
+            )
+        return probes
+
     @staticmethod
     def run_tesseract_ocr(
         image_path: Path,
