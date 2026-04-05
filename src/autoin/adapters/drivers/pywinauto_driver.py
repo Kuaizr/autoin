@@ -48,14 +48,34 @@ class PywinautoDriver(DesktopDriver):
     @staticmethod
     def _set_windows_clipboard_text(text: str) -> None:
         import ctypes  # pragma: no cover - Windows-only runtime
+        from ctypes import wintypes  # pragma: no cover - Windows-only runtime
 
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
         GMEM_MOVEABLE = 0x0002
         CF_UNICODETEXT = 13
 
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.EmptyClipboard.argtypes = []
+        user32.EmptyClipboard.restype = wintypes.BOOL
+        user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+        user32.SetClipboardData.restype = wintypes.HANDLE
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = wintypes.BOOL
+
+        kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+        kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = wintypes.LPVOID
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalUnlock.restype = wintypes.BOOL
+        kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalFree.restype = wintypes.HGLOBAL
+
         if not user32.OpenClipboard(None):
             raise DesktopAutomationError("clipboard_open_failed", "Failed to open Windows clipboard.", app="wechat")
+        handle = None
         try:
             user32.EmptyClipboard()
             data = text.encode("utf-16-le") + b"\x00\x00"
@@ -67,16 +87,27 @@ class PywinautoDriver(DesktopDriver):
                     app="wechat",
                 )
             buffer = kernel32.GlobalLock(handle)
+            if not buffer:
+                kernel32.GlobalFree(handle)
+                raise DesktopAutomationError(
+                    "clipboard_lock_failed",
+                    "Failed to lock clipboard buffer.",
+                    app="wechat",
+                )
             ctypes.memmove(buffer, data, len(data))
             kernel32.GlobalUnlock(handle)
             if not user32.SetClipboardData(CF_UNICODETEXT, handle):
+                kernel32.GlobalFree(handle)
                 raise DesktopAutomationError(
                     "clipboard_set_failed",
                     "Failed to populate clipboard text.",
                     app="wechat",
                 )
+            handle = None
         finally:
             user32.CloseClipboard()
+            if handle:
+                kernel32.GlobalFree(handle)
 
     def _find_live_window(self, app: str):  # noqa: ANN202
         from pywinauto import Desktop  # pragma: no cover - Windows-only runtime
