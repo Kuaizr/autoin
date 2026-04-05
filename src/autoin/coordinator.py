@@ -14,6 +14,8 @@ from autoin.infrastructure.models import (
     EventType,
     IntakeDecisionPayload,
     MemoryCompactionPayload,
+    SnapshotCapturedPayload,
+    SnapshotRequestPayload,
     TaskKind,
     TaskPayload,
     TaskPlan,
@@ -161,6 +163,36 @@ class Coordinator:
         released_stream_ids = self.complete_task(state, check_task)
         self.finalize_plan(state)
         return released_stream_ids
+
+    def request_snapshot_for_check(self, task: TaskPayload, reason: str = "checker_requires_latest_snapshot") -> UnifiedEvent:
+        if task.target is None:
+            raise ValueError("Snapshot requests require a task target conversation.")
+        request = SnapshotRequestPayload(
+            conversation=task.target,
+            check_task_id=task.task_id,
+            adapter=task.adapter,
+            reason=reason,
+        )
+        event = UnifiedEvent(
+            event_type=EventType.SNAPSHOT_REQUESTED,
+            metadata=EventMetadata(
+                producer=self.producer_name,
+                causation_id=task.task_id,
+            ),
+            payload=request,
+        )
+        self.broker.publish(event)
+        return event
+
+    def handle_snapshot_capture(self, plan_id: str, capture: SnapshotCapturedPayload) -> list[str]:
+        state = self.get_plan_state(plan_id)
+        if state is None:
+            return []
+        check_task = next((task for task in state.plan.tasks if task.task_id == capture.check_task_id), None)
+        if check_task is None:
+            return []
+        decision = self.checker.validate_snapshot_capture(check_task, capture)
+        return self.handle_checker_result(plan_id, decision)
 
     def handle_memory_compaction(self, payload: MemoryCompactionPayload) -> IntakeDecisionPayload:
         messages = payload.recent_messages

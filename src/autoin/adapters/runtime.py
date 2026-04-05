@@ -15,6 +15,8 @@ from autoin.infrastructure.models import (
     EventType,
     MessagePayload,
     Platform,
+    SnapshotCapturedPayload,
+    SnapshotRequestPayload,
     TaskPayload,
     TaskStatus,
     UnifiedEvent,
@@ -50,6 +52,29 @@ class ObserverAdapter(BaseAdapter):
                 conversation=conversation,
                 messages=messages,
                 screenshot_ref=screenshot_ref,
+            ),
+        )
+        self.broker.publish(event)
+        return event
+
+    def capture_snapshot(
+        self,
+        request: SnapshotRequestPayload,
+        screenshot_ref: str,
+        extracted_fields: dict[str, str] | None = None,
+    ) -> UnifiedEvent:
+        event = UnifiedEvent(
+            event_type=EventType.SNAPSHOT_CAPTURED,
+            metadata=EventMetadata(
+                producer=self.adapter_name,
+                causation_id=request.check_task_id,
+            ),
+            payload=SnapshotCapturedPayload(
+                conversation=request.conversation,
+                check_task_id=request.check_task_id,
+                adapter=self.adapter_name,
+                screenshot_ref=screenshot_ref,
+                extracted_fields=extracted_fields or {},
             ),
         )
         self.broker.publish(event)

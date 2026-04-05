@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from autoin.infrastructure.models import CheckerDecisionPayload, TaskPayload
+from autoin.infrastructure.models import CheckerDecisionPayload, SnapshotCapturedPayload, TaskPayload
 
 
 class CheckerAgent:
@@ -25,4 +25,15 @@ class CheckerAgent:
             reason=reason,
             screenshot_ref=screenshot_ref,
             extracted_fields=fields,
+        )
+
+    def validate_snapshot_capture(
+        self,
+        task: TaskPayload,
+        capture: SnapshotCapturedPayload,
+    ) -> CheckerDecisionPayload:
+        return self.validate_dispatch_task(
+            task=task,
+            screenshot_ref=capture.screenshot_ref,
+            extracted_fields=capture.extracted_fields,
         )

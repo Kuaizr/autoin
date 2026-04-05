@@ -131,6 +131,27 @@ class CheckerDecisionPayload(BaseModel):
     validated_at: datetime = Field(default_factory=utc_now)
 
 
+class SnapshotRequestPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: ConversationRef
+    check_task_id: str
+    adapter: str
+    reason: str
+    requested_at: datetime = Field(default_factory=utc_now)
+
+
+class SnapshotCapturedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: ConversationRef
+    check_task_id: str
+    adapter: str
+    screenshot_ref: str
+    extracted_fields: dict[str, str] = Field(default_factory=dict)
+    captured_at: datetime = Field(default_factory=utc_now)
+
+
 class TaskPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -237,6 +258,8 @@ class UnifiedEvent(BaseModel):
         | CheckerDecisionPayload
         | IntakeDecisionPayload
         | MemoryCompactionPayload
+        | SnapshotRequestPayload
+        | SnapshotCapturedPayload
         | AdapterManifestPayload
         | AdapterStatusPayload
         | TaskPayload
