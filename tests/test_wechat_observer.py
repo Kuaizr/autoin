@@ -105,6 +105,25 @@ def test_run_wechat_observer_loop_returns_poll_summary(tmp_path: Path) -> None:
     assert result["last_result"]["status"] == "emitted"
 
 
+def test_run_wechat_observer_loop_emits_json_safe_logs(tmp_path: Path, capsys) -> None:
+    broker = StubBroker()
+
+    result = run_wechat_observer_loop(
+        "kzr",
+        max_polls=1,
+        broker=broker,
+        driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
+        state_file=tmp_path / "observer-state.json",
+        emit_logs=True,
+    )
+    captured = capsys.readouterr()
+
+    assert result["polls"] == 1
+    assert '"event": "observer_poll_completed"' in captured.out
+    assert '"window":' in captured.out
+    assert "locator='微信'" in captured.out
+
+
 def test_load_observer_state_returns_empty_for_missing_file(tmp_path: Path) -> None:
     assert load_observer_state(tmp_path / "missing.json") == {}
 

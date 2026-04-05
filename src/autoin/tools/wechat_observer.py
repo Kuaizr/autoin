@@ -137,7 +137,14 @@ def run_wechat_observer_loop(
         snapshots.append(snapshot)
         polls += 1
         if emit_logs:
-            print(json.dumps({"event": "observer_poll_completed", "poll": polls, **snapshot}, ensure_ascii=False), flush=True)
+            print(
+                json.dumps(
+                    {"event": "observer_poll_completed", "poll": polls, **snapshot},
+                    ensure_ascii=False,
+                    default=str,
+                ),
+                flush=True,
+            )
         if max_polls is not None and polls >= max_polls:
             break
         time.sleep(poll_interval_seconds)
