@@ -113,3 +113,5 @@ def test_snapshot_capture_can_unlock_dispatch_via_checker() -> None:
 
     assert released == ["2-0"]
     assert state.completed_task_ids == [state.plan.tasks[0].task_id]
+    assert state.plan.tasks[1].arguments["extracted_fields"] == {"address": "Shanghai", "item_code": "A123"}
+    assert state.plan.tasks[1].arguments["screenshot_ref"] == "shot-3"

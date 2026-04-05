@@ -160,9 +160,27 @@ class Coordinator:
         if not decision.approved:
             self.fail_task(state, check_task)
             return []
+        self._merge_checker_fields_into_dispatch_tasks(state, check_task, decision)
         released_stream_ids = self.complete_task(state, check_task)
         self.finalize_plan(state)
         return released_stream_ids
+
+    def _merge_checker_fields_into_dispatch_tasks(
+        self,
+        state: TaskPlanState,
+        check_task: TaskPayload,
+        decision: CheckerDecisionPayload,
+    ) -> None:
+        for index, task in enumerate(state.plan.tasks):
+            if check_task.task_id not in task.dependencies:
+                continue
+            merged_arguments = {
+                **task.arguments,
+                "reason": decision.reason,
+                "screenshot_ref": decision.screenshot_ref,
+                "extracted_fields": dict(decision.extracted_fields),
+            }
+            state.plan.tasks[index] = task.model_copy(update={"arguments": merged_arguments})
 
     def request_snapshot_for_check(self, task: TaskPayload, reason: str = "checker_requires_latest_snapshot") -> UnifiedEvent:
         if task.target is None:

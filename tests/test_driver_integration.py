@@ -54,7 +54,14 @@ def test_platform_registry_uses_driver_for_wechat_send() -> None:
     result = registry.dispatch(task)
 
     assert result["driver"] == "recording"
-    assert driver.calls == [("send_message", "wechat", "xiaohongshu_u1", "dispatch_v1")]
+    assert driver.calls == [
+        (
+            "send_message",
+            "wechat",
+            "xiaohongshu_u1",
+            "[AUTO DISPATCH]\nsource_platform: xiaohongshu",
+        )
+    ]
 
 
 def test_platform_registry_uses_driver_for_source_capture() -> None:

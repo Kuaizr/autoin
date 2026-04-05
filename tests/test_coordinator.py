@@ -306,6 +306,8 @@ def test_checker_approval_releases_dispatch_task() -> None:
 
     assert released == ["2-0"]
     assert state.completed_task_ids == [check_task.task_id]
+    assert state.plan.tasks[1].arguments["extracted_fields"] == {"address": "Shanghai", "item_code": "A123"}
+    assert state.plan.tasks[1].arguments["screenshot_ref"] == "shot-1"
 
 
 def test_checker_rejection_blocks_plan() -> None:
