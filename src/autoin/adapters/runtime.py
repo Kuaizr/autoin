@@ -259,9 +259,34 @@ class TaskWorker:
             processed.append(stream_id)
         return processed
 
-    def resume(self, pending_idle_ms: int = 0, poll_count: int = 10, poll_block_ms: int = 1000) -> dict[str, list[str]]:
+    def reclaim_stale(self, min_idle_ms: int, count: int = 100) -> list[str]:
+        processed: list[str] = []
+        for stream_id, task in self.broker.claim_stale_tasks(
+            consumer_name=self.consumer_name,
+            min_idle_ms=min_idle_ms,
+            count=count,
+        ):
+            try:
+                self.executor.execute_action(task)
+                self._handle_success(task)
+            except LockAcquisitionError as exc:
+                self._handle_failure(task, "ui_lock_unavailable", str(exc), retryable=True)
+            except Exception as exc:
+                self._handle_failure(task, "action_execution_failed", str(exc), retryable=True)
+            self.broker.ack_task(stream_id)
+            processed.append(stream_id)
+        return processed
+
+    def resume(
+        self,
+        pending_idle_ms: int = 0,
+        reclaim_idle_ms: int | None = None,
+        poll_count: int = 10,
+        poll_block_ms: int = 1000,
+    ) -> dict[str, list[str]]:
         return {
             "recovered": self.recover_pending(idle_ms=pending_idle_ms),
+            "reclaimed": self.reclaim_stale(min_idle_ms=reclaim_idle_ms) if reclaim_idle_ms is not None else [],
             "polled": self.poll_once(count=poll_count, block_ms=poll_block_ms),
         }
 

@@ -171,6 +171,31 @@ class RedisBroker:
             entries.append((stream_id, TaskPayload.model_validate_json(raw_task)))
         return entries
 
+    def claim_stale_tasks(
+        self,
+        consumer_name: str,
+        min_idle_ms: int,
+        group_name: str | None = None,
+        count: int = 100,
+    ) -> list[tuple[str, TaskPayload]]:
+        group = group_name or self.settings.redis_consumer_group
+        next_id, claimed, deleted = self.client.xautoclaim(
+            self.settings.redis_task_stream_key,
+            group,
+            consumer_name,
+            min_idle_ms,
+            start_id="0-0",
+            count=count,
+        )
+        del next_id, deleted
+        tasks: list[tuple[str, TaskPayload]] = []
+        for stream_id, fields in claimed:
+            raw_task = fields.get("task")
+            if not raw_task:
+                continue
+            tasks.append((str(stream_id), TaskPayload.model_validate_json(raw_task)))
+        return tasks
+
     def subscribe(self) -> Iterator[UnifiedEvent]:
         pubsub = self.client.pubsub(ignore_subscribe_messages=True)
         pubsub.subscribe(self.settings.redis_pubsub_channel)

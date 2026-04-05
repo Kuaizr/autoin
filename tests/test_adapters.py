@@ -36,6 +36,9 @@ class StubBroker:
     def pending_tasks(self, consumer_name: str, idle_ms: int):  # noqa: ANN001
         return list(self.tasks)
 
+    def claim_stale_tasks(self, consumer_name: str, min_idle_ms: int, count: int):  # noqa: ANN001
+        return list(self.tasks)
+
 
 class StubLockManager:
     def __init__(self) -> None:
@@ -282,16 +285,53 @@ def test_task_worker_resume_recovers_then_polls() -> None:
     )
 
     original_pending_tasks = broker.pending_tasks
+    original_claim_stale_tasks = broker.claim_stale_tasks
     original_consume_tasks = broker.consume_tasks
 
     broker.pending_tasks = lambda consumer_name, idle_ms: [("9-0", pending_task)]  # noqa: E731
+    broker.claim_stale_tasks = lambda consumer_name, min_idle_ms, count: [("11-0", pending_task)]  # noqa: E731
     broker.consume_tasks = lambda consumer_name, count, block_ms: [("10-0", new_task)]  # noqa: E731
 
-    resumed = worker.resume(pending_idle_ms=5000, poll_count=1, poll_block_ms=10)
+    resumed = worker.resume(pending_idle_ms=5000, reclaim_idle_ms=10000, poll_count=1, poll_block_ms=10)
 
     broker.pending_tasks = original_pending_tasks
+    broker.claim_stale_tasks = original_claim_stale_tasks
     broker.consume_tasks = original_consume_tasks
 
-    assert resumed == {"recovered": ["9-0"], "polled": ["10-0"]}
-    assert broker.acked == ["9-0", "10-0"]
-    assert succeeded == ["task-pending", "task-new"]
+    assert resumed == {"recovered": ["9-0"], "reclaimed": ["11-0"], "polled": ["10-0"]}
+    assert broker.acked == ["9-0", "11-0", "10-0"]
+    assert succeeded == ["task-pending", "task-pending", "task-new"]
+
+
+def test_task_worker_can_reclaim_stale_tasks() -> None:
+    broker = StubBroker()
+    lock_manager = StubLockManager()
+    succeeded = []
+
+    def route_success(task: TaskPayload):
+        succeeded.append(task.task_id)
+        return []
+
+    task = TaskPayload(
+        task_id="task-stale",
+        plan_id="plan-1",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        action="send_group_message",
+    )
+    registry = ActionRegistry()
+    registry.register("send_group_message", lambda task: {"action": task.action})
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager, action_registry=registry)
+    broker.tasks = [("12-0", task)]
+    worker = TaskWorker(
+        broker,
+        executor,
+        consumer_name="worker-1",
+        success_handler=route_success,
+    )
+
+    processed = worker.reclaim_stale(min_idle_ms=15000)
+
+    assert processed == ["12-0"]
+    assert broker.acked == ["12-0"]
+    assert succeeded == ["task-stale"]
