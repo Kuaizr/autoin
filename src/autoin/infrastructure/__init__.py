@@ -1,6 +1,7 @@
 from autoin.infrastructure.broker import RedisBroker
 from autoin.infrastructure.lock_manager import LockAcquisitionError, LockLease, RedisLockManager
 from autoin.infrastructure.models import (
+    AdapterHeartbeatPayload,
     ConversationRef,
     ErrorPayload,
     EventMetadata,
@@ -10,12 +11,14 @@ from autoin.infrastructure.models import (
     Platform,
     TaskKind,
     TaskPlan,
+    TaskPlanState,
     TaskPayload,
     TaskStatus,
     UnifiedEvent,
 )
 
 __all__ = [
+    "AdapterHeartbeatPayload",
     "ConversationRef",
     "ErrorPayload",
     "EventMetadata",
@@ -29,6 +32,7 @@ __all__ = [
     "RedisLockManager",
     "TaskKind",
     "TaskPlan",
+    "TaskPlanState",
     "TaskPayload",
     "TaskStatus",
     "UnifiedEvent",

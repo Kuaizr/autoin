@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     redis_stream_key: str = Field(default="autoin:stream:events")
     redis_task_stream_key: str = Field(default="autoin:stream:tasks")
     redis_dead_letter_stream_key: str = Field(default="autoin:stream:dead-letter")
+    redis_plan_state_prefix: str = Field(default="autoin:state:plan")
     redis_pubsub_channel: str = Field(default="autoin:channel:events")
     redis_consumer_group: str = Field(default="autoin:group:coordinator")
     ui_lock_key: str = Field(default="autoin:lock:ui")

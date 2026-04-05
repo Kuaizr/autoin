@@ -18,6 +18,7 @@ class EventType(StrEnum):
     TASK_STATUS_CHANGED = "task_status_changed"
     ACTION_REQUESTED = "action_requested"
     ACTION_COMPLETED = "action_completed"
+    ADAPTER_HEARTBEAT = "adapter_heartbeat"
     SNAPSHOT_REQUESTED = "snapshot_requested"
     SNAPSHOT_CAPTURED = "snapshot_captured"
     LOCK_ACQUIRED = "lock_acquired"
@@ -85,6 +86,7 @@ class TaskPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str = Field(default_factory=lambda: str(uuid4()))
+    plan_id: str | None = None
     parent_task_id: str | None = None
     kind: TaskKind
     status: TaskStatus = Field(default=TaskStatus.PENDING)
@@ -112,6 +114,16 @@ class TaskPlan(BaseModel):
     created_at: datetime = Field(default_factory=utc_now)
 
 
+class TaskPlanState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan: TaskPlan
+    released_task_ids: list[str] = Field(default_factory=list)
+    completed_task_ids: list[str] = Field(default_factory=list)
+    failed_task_ids: list[str] = Field(default_factory=list)
+    blocked: bool = False
+
+
 class LockStatePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -130,10 +142,22 @@ class ErrorPayload(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class AdapterHeartbeatPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    adapter: str
+    platform: Platform
+    role: Literal["observer", "executor"]
+    version: str = "0.1.0"
+    host: str | None = None
+    capabilities: list[str] = Field(default_factory=list)
+    observed_at: datetime = Field(default_factory=utc_now)
+
+
 class UnifiedEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
     event_id: str = Field(default_factory=lambda: str(uuid4()))
     event_type: EventType
     metadata: EventMetadata
-    payload: MessagePayload | TaskPayload | LockStatePayload | ErrorPayload
+    payload: MessagePayload | TaskPayload | LockStatePayload | ErrorPayload | AdapterHeartbeatPayload

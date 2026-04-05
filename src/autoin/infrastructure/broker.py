@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from redis import Redis
 
 from autoin.config import Settings
-from autoin.infrastructure.models import TaskPayload, UnifiedEvent
+from autoin.infrastructure.models import TaskPayload, TaskPlanState, UnifiedEvent
 
 
 class RedisBroker:
@@ -68,6 +68,21 @@ class RedisBroker:
                 },
             )
         )
+
+    def save_plan_state(self, state: TaskPlanState) -> None:
+        self.client.set(self.plan_state_key(state.plan.plan_id), state.model_dump_json())
+
+    def load_plan_state(self, plan_id: str) -> TaskPlanState | None:
+        raw_state = self.client.get(self.plan_state_key(plan_id))
+        if raw_state is None:
+            return None
+        return TaskPlanState.model_validate_json(raw_state)
+
+    def delete_plan_state(self, plan_id: str) -> int:
+        return int(self.client.delete(self.plan_state_key(plan_id)))
+
+    def plan_state_key(self, plan_id: str) -> str:
+        return f"{self.settings.redis_plan_state_prefix}:{plan_id}"
 
     def ensure_consumer_group(self, group_name: str | None = None) -> None:
         group = group_name or self.settings.redis_consumer_group
