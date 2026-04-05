@@ -228,6 +228,43 @@ class PywinautoDriver(DesktopDriver):
         assert last_error is not None
         raise last_error
 
+    @staticmethod
+    def _read_visible_text_controls(window) -> list[str]:  # noqa: ANN001
+        texts: list[str] = []
+        for control in window.descendants(control_type="Text"):
+            try:
+                if hasattr(control, "is_visible") and not control.is_visible():
+                    continue
+            except Exception:
+                continue
+            try:
+                text = control.window_text().strip()
+            except Exception:
+                continue
+            if not text:
+                continue
+            if texts and texts[-1] == text:
+                continue
+            texts.append(text)
+        return texts
+
+    def observe_wechat_conversation(self, target_uid: str | None = None) -> dict[str, object]:
+        window = self._find_live_window("wechat")
+        texts = self._read_visible_text_controls(window)
+        return {
+            "driver": "pywinauto",
+            "app": "wechat",
+            "target_uid": target_uid,
+            "window": WindowReference(
+                app="wechat",
+                target_uid=target_uid,
+                backend=get_window_profile("wechat").backend,
+                locator=window.window_text() or "wechat_window",
+                locator_status="resolved",
+            ),
+            "texts": texts,
+        }
+
     def build_capture_artifact_path(self, app: str, target_uid: str | None, mode: str) -> Path:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         safe_target = (target_uid or "broadcast").replace("/", "_").replace("\\", "_")
