@@ -42,6 +42,13 @@ class RedisBroker:
         )
         return self._decode_stream_entries(entries)
 
+    def latest_event_stream_id(self) -> str:
+        entries = self.client.xrevrange(self.settings.redis_stream_key, max="+", min="-", count=1)
+        if not entries:
+            return "0-0"
+        stream_id, _ = entries[0]
+        return str(stream_id)
+
     def enqueue_task(self, task: TaskPayload) -> str:
         task_json = task.model_dump_json()
         return str(

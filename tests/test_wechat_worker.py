@@ -130,6 +130,23 @@ def test_run_wechat_worker_loop_stops_after_max_batches() -> None:
     assert result["batch_summaries"][1]["processed_count"] == 1
 
 
+def test_run_wechat_worker_once_hides_stale_results_when_idle() -> None:
+    broker = StubBroker()
+
+    result = run_wechat_worker_once(
+        consumer_name="worker-1",
+        prefer_pywinauto=False,
+        count=1,
+        block_ms=1,
+        broker=broker,
+        lock_manager=StubLockManager(),
+    )
+
+    assert result["processed_count"] == 0
+    assert result["last_action_result"] is None
+    assert result["last_rollback_result"] is None
+
+
 def test_default_consumer_name_uses_hostname() -> None:
     assert default_consumer_name().startswith("wechat-worker-")
 

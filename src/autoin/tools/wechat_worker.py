@@ -20,8 +20,8 @@ def _build_worker_snapshot(consumer_name: str, executor: Any, processed_stream_i
         "consumer_name": consumer_name,
         "processed_stream_ids": processed_stream_ids,
         "processed_count": len(processed_stream_ids),
-        "last_action_result": executor.last_action_result,
-        "last_rollback_result": executor.last_rollback_result,
+        "last_action_result": executor.last_action_result if processed_stream_ids else None,
+        "last_rollback_result": executor.last_rollback_result if processed_stream_ids else None,
         **extra,
     }
 
@@ -148,8 +148,8 @@ def run_wechat_worker_loop(
                 "batch": batches,
                 "processed_stream_ids": batch_processed,
                 "processed_count": len(batch_processed),
-                "last_action_result": executor.last_action_result,
-                "last_rollback_result": executor.last_rollback_result,
+                "last_action_result": executor.last_action_result if batch_processed else None,
+                "last_rollback_result": executor.last_rollback_result if batch_processed else None,
             }
         )
         if emit_logs:

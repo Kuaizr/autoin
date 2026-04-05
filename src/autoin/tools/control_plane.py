@@ -205,11 +205,21 @@ def build_control_plane_service(
     return ControlPlaneService(selected_broker, resolved_settings)
 
 
+def resolve_start_stream_id(service: ControlPlaneService, requested: str) -> str:
+    if requested == "latest":
+        return service.broker.latest_event_stream_id()
+    return requested
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the Linux control-plane loop over the Redis event stream.")
     parser.add_argument("--count", type=int, default=10)
     parser.add_argument("--block-ms", type=int, default=1000)
-    parser.add_argument("--last-stream-id", default="0-0")
+    parser.add_argument(
+        "--last-stream-id",
+        default="latest",
+        help='Stream offset to resume from. Defaults to "latest" to avoid replaying historical events on startup.',
+    )
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--quiet", action="store_true")
@@ -219,16 +229,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     service = build_control_plane_service()
+    start_stream_id = resolve_start_stream_id(service, args.last_stream_id)
     if args.once:
         result = service.run_once(
-            last_stream_id=args.last_stream_id,
+            last_stream_id=start_stream_id,
             count=args.count,
             block_ms=args.block_ms,
             emit_logs=not args.quiet,
         )
     else:
         result = service.run_loop(
-            last_stream_id=args.last_stream_id,
+            last_stream_id=start_stream_id,
             count=args.count,
             block_ms=args.block_ms,
             max_batches=args.max_batches,

@@ -14,7 +14,7 @@ from autoin.infrastructure.models import (
     TaskPayload,
     UnifiedEvent,
 )
-from autoin.tools.control_plane import ControlPlaneService, emit_control_plane_log, main
+from autoin.tools.control_plane import ControlPlaneService, emit_control_plane_log, main, resolve_start_stream_id
 
 
 class StubBroker:
@@ -48,6 +48,9 @@ class StubBroker:
 
     def read_stream(self, last_stream_id: str = "0-0", count: int = 10, block_ms: int = 1000):  # noqa: ARG002
         return list(self.stream_entries[:count])
+
+    def latest_event_stream_id(self) -> str:
+        return "99-0"
 
 
 def build_service(broker: StubBroker) -> ControlPlaneService:
@@ -251,8 +254,22 @@ def test_emit_control_plane_log_prints_json(capsys) -> None:
     assert captured.out.strip() == '{"event": "control_plane_started", "count": 1}'
 
 
+def test_resolve_start_stream_id_defaults_to_latest_event_id() -> None:
+    broker = StubBroker()
+    service = build_service(broker)
+
+    assert resolve_start_stream_id(service, "latest") == "99-0"
+    assert resolve_start_stream_id(service, "12-0") == "12-0"
+
+
 def test_control_plane_main_supports_quiet_once(capsys, monkeypatch) -> None:
+    class StubBroker:
+        def latest_event_stream_id(self) -> str:
+            return "99-0"
+
     class StubService:
+        broker = StubBroker()
+
         def run_once(self, **kwargs):  # noqa: ANN003, ANN201
             return {"last_stream_id": "1-0", "processed_count": 0, "processed": []}
 
