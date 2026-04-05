@@ -30,11 +30,11 @@ class CaptureAndValidateOrderHandler(XiaohongshuActionHandler):
             mode="fullscreen",
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "xiaohongshu",
             "action": self.action_name,
             "capture_mode": "fullscreen",
             "requires_latest_snapshot": True,
-            **result,
         }
 
 
@@ -52,10 +52,10 @@ class SendAutoReplyHandler(XiaohongshuActionHandler):
             message=message,
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "xiaohongshu",
             "action": self.action_name,
             "message": message,
-            **result,
         }
 
 

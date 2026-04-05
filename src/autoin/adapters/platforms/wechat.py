@@ -30,11 +30,11 @@ class SendDispatchMessageHandler(WechatActionHandler):
             message="dispatch_v1",
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "wechat",
             "action": self.action_name,
             "source_platform": str(task.arguments.get("source_platform", "")),
             "message_template": "dispatch_v1",
-            **result,
         }
 
 
@@ -52,10 +52,10 @@ class SendAutoReplyHandler(WechatActionHandler):
             message=message,
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "wechat",
             "action": self.action_name,
             "message": message,
-            **result,
         }
 
 

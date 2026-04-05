@@ -1,5 +1,5 @@
 from autoin.adapters import build_platform_action_registry
-from autoin.adapters.drivers import DesktopDriver
+from autoin.adapters.drivers import DesktopDriver, DriverActionResult
 from autoin.infrastructure.models import ConversationRef, Platform, TaskKind, TaskPayload
 
 
@@ -7,13 +7,27 @@ class RecordingDriver(DesktopDriver):
     def __init__(self) -> None:
         self.calls = []
 
-    def send_message(self, app: str, target_uid: str | None, message: str) -> dict[str, object]:
+    def send_message(self, app: str, target_uid: str | None, message: str) -> DriverActionResult:
         self.calls.append(("send_message", app, target_uid, message))
-        return {"driver": "recording", "operation": "send_message"}
+        return DriverActionResult(
+            driver="recording",
+            operation="send_message",
+            status="ok",
+            app=app,
+            target_uid=target_uid,
+            message=message,
+        )
 
-    def capture_window(self, app: str, target_uid: str | None, mode: str) -> dict[str, object]:
+    def capture_window(self, app: str, target_uid: str | None, mode: str) -> DriverActionResult:
         self.calls.append(("capture_window", app, target_uid, mode))
-        return {"driver": "recording", "operation": "capture_window"}
+        return DriverActionResult(
+            driver="recording",
+            operation="capture_window",
+            status="ok",
+            app=app,
+            target_uid=target_uid,
+            mode=mode,
+        )
 
 
 def test_platform_registry_uses_driver_for_wechat_send() -> None:

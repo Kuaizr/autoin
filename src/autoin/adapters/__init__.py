@@ -1,7 +1,15 @@
 from autoin.adapters.actions import ActionRegistry, UnknownActionError, build_default_action_registry
 from autoin.adapters.base import BaseAdapter
 from autoin.adapters.directory import AdapterDirectory, UnsupportedAdapterActionError
-from autoin.adapters.drivers import DesktopDriver, MockWindowsDriver, PywinautoDriver, PywinautoUnavailableError
+from autoin.adapters.drivers import (
+    DesktopAutomationError,
+    DesktopDriver,
+    DriverActionResult,
+    MockWindowsDriver,
+    PywinautoDriver,
+    PywinautoUnavailableError,
+    WindowReference,
+)
 from autoin.adapters.factory import build_executor_adapter, build_platform_action_registry, build_windows_driver
 from autoin.adapters.platforms import (
     DouyinActionHandler,
@@ -19,7 +27,9 @@ __all__ = [
     "ActionRegistry",
     "AdapterDirectory",
     "BaseAdapter",
+    "DesktopAutomationError",
     "DesktopDriver",
+    "DriverActionResult",
     "ExecutorAdapter",
     "FailureHandler",
     "MockWindowsDriver",
@@ -36,6 +46,7 @@ __all__ = [
     "build_windows_driver",
     "DouyinActionHandler",
     "WechatActionHandler",
+    "WindowReference",
     "XiaohongshuActionHandler",
     "XianyuActionHandler",
     "build_douyin_action_registry",

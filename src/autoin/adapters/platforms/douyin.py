@@ -30,11 +30,11 @@ class CaptureAndValidateOrderHandler(DouyinActionHandler):
             mode="focused_window",
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "douyin",
             "action": self.action_name,
             "capture_mode": "focused_window",
             "requires_latest_snapshot": True,
-            **result,
         }
 
 
@@ -52,10 +52,10 @@ class SendAutoReplyHandler(DouyinActionHandler):
             message=message,
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "douyin",
             "action": self.action_name,
             "message": message,
-            **result,
         }
 
 

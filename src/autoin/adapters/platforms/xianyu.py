@@ -30,11 +30,11 @@ class CaptureAndValidateOrderHandler(XianyuActionHandler):
             mode="conversation_panel",
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "xianyu",
             "action": self.action_name,
             "capture_mode": "conversation_panel",
             "requires_latest_snapshot": True,
-            **result,
         }
 
 
@@ -52,10 +52,10 @@ class SendAutoReplyHandler(XianyuActionHandler):
             message=message,
         )
         return {
+            **result.model_dump(mode="json", exclude_none=True),
             "platform": "xianyu",
             "action": self.action_name,
             "message": message,
-            **result,
         }
 
 
