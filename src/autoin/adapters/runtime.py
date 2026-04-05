@@ -124,6 +124,7 @@ class ExecutorAdapter(BaseAdapter):
         self.action_handler = action_handler
         self.rollback_handler = rollback_handler
         self.rollback_invocations = 0
+        self.last_action_result: dict[str, object] | None = None
         self.last_rollback_result: dict[str, object] | None = None
 
     def start_listening(self) -> None:
@@ -151,7 +152,9 @@ class ExecutorAdapter(BaseAdapter):
                     )
                 )
 
+            self.last_action_result = None
             result = self._run_action(task)
+            self.last_action_result = result
             completed_task = running_task.model_copy(update={"status": TaskStatus.SUCCEEDED})
             event = UnifiedEvent(
                 event_type=EventType.ACTION_COMPLETED,
