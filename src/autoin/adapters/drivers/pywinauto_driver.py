@@ -32,6 +32,7 @@ class PywinautoDriver(DesktopDriver):
                 "pywinauto is not installed. Install with `uv sync --extra windows` on Windows."
             ) from exc
         self.artifact_root = artifact_root or Path("artifacts") / "windows"
+        self.enable_live_wechat = True
 
     def resolve_window(self, app: str, target_uid: str | None) -> WindowReference:
         profile = get_window_profile(app)
@@ -140,7 +141,7 @@ class PywinautoDriver(DesktopDriver):
         return self.artifact_root / app / mode / filename
 
     def send_message(self, app: str, target_uid: str | None, message: str) -> DriverActionResult:
-        if app == "wechat":  # pragma: no branch - simple platform switch
+        if app == "wechat" and getattr(self, "enable_live_wechat", False):  # pragma: no branch - simple switch
             window = self._send_wechat_message(target_uid, message)
             return DriverActionResult(
                 driver="pywinauto",
@@ -183,7 +184,11 @@ class PywinautoDriver(DesktopDriver):
 
     def rollback_ui(self, app: str, target_uid: str | None = None) -> DriverActionResult:
         window = self.resolve_window(app, target_uid)
-        if app == "wechat" and sys_platform == "win32":  # pragma: no branch - Windows-only side effect
+        if (
+            app == "wechat"
+            and sys_platform == "win32"
+            and getattr(self, "enable_live_wechat", False)
+        ):  # pragma: no branch - Windows-only side effect
             from pywinauto.keyboard import send_keys  # pragma: no cover - Windows-only runtime
 
             live_window = self._find_live_window(app)
@@ -199,7 +204,11 @@ class PywinautoDriver(DesktopDriver):
         return DriverActionResult(
             driver="pywinauto",
             operation="rollback_ui",
-            status="sent" if app == "wechat" and sys_platform == "win32" else "stubbed",
+            status=(
+                "sent"
+                if app == "wechat" and sys_platform == "win32" and getattr(self, "enable_live_wechat", False)
+                else "stubbed"
+            ),
             app=app,
             target_uid=target_uid,
             window=window,

@@ -1,4 +1,5 @@
 from pathlib import Path
+from sys import platform as sys_platform
 
 from autoin.adapters import MockWindowsDriver, build_windows_driver
 from autoin.adapters.drivers import DriverActionResult, PywinautoUnavailableError, get_window_profile
@@ -12,16 +13,23 @@ def test_build_windows_driver_defaults_to_mock() -> None:
 
 def test_build_windows_driver_falls_back_when_pywinauto_unavailable() -> None:
     driver = build_windows_driver(prefer_pywinauto=True)
-    assert isinstance(driver, MockWindowsDriver)
+    if sys_platform == "win32":
+        assert isinstance(driver, PywinautoDriver | MockWindowsDriver)
+    else:
+        assert isinstance(driver, MockWindowsDriver)
 
 
 def test_pywinauto_driver_raises_on_non_windows_hosts() -> None:
-    try:
-        PywinautoDriver()
-    except PywinautoUnavailableError:
-        pass
+    if sys_platform == "win32":
+        driver = PywinautoDriver()
+        assert isinstance(driver, PywinautoDriver)
     else:
-        raise AssertionError("Expected PywinautoDriver to reject non-Windows hosts in this environment.")
+        try:
+            PywinautoDriver()
+        except PywinautoUnavailableError:
+            pass
+        else:
+            raise AssertionError("Expected PywinautoDriver to reject non-Windows hosts in this environment.")
 
 
 def test_mock_windows_driver_returns_structured_result() -> None:
@@ -38,6 +46,7 @@ def test_mock_windows_driver_returns_structured_result() -> None:
 def test_pywinauto_driver_builds_artifact_path_from_contract() -> None:
     driver = object.__new__(PywinautoDriver)
     driver.artifact_root = Path("artifacts") / "windows"
+    driver.enable_live_wechat = False
 
     artifact_path = driver.build_capture_artifact_path(
         app="xiaohongshu",
@@ -53,6 +62,7 @@ def test_pywinauto_driver_builds_artifact_path_from_contract() -> None:
 def test_pywinauto_driver_returns_stubbed_window_resolution() -> None:
     driver = object.__new__(PywinautoDriver)
     driver.artifact_root = Path("artifacts") / "windows"
+    driver.enable_live_wechat = False
 
     window = driver.resolve_window(app="douyin", target_uid="douyin_u2")
 
@@ -65,6 +75,7 @@ def test_pywinauto_driver_returns_stubbed_window_resolution() -> None:
 def test_pywinauto_driver_exposes_stubbed_rollback_contract() -> None:
     driver = object.__new__(PywinautoDriver)
     driver.artifact_root = Path("artifacts") / "windows"
+    driver.enable_live_wechat = False
 
     result = driver.rollback_ui(app="wechat", target_uid="wechat_u3")
 
