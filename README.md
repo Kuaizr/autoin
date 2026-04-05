@@ -73,3 +73,15 @@ uv run python -m autoin.tools.control_plane --max-batches 1
 ```
 
 Use `--once --quiet` if you only want the final JSON summary for a single polling batch.
+
+## WeChat Intake
+
+For the current MVP, you can simulate an inbound WeChat customer message on the Linux control plane:
+
+```bash
+uv run python -m autoin.tools.wechat_intake \
+  --customer-user-id kzr \
+  --message "我要下单这个产品，我的客户id是 abc123"
+```
+
+Run this while `autoin.tools.control_plane` and the Windows `autoin.tools.wechat_worker` are both running to drive the full WeChat-to-WeChat dispatch flow.

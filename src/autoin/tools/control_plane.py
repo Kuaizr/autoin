@@ -39,13 +39,14 @@ class ControlPlaneService:
     def process_event(self, event: UnifiedEvent) -> dict[str, Any]:
         if event.event_type == EventType.MESSAGE_BUFFERED:
             payload = event.payload
-            self.debouncer.add_message(
-                payload.conversation,
-                *payload.messages,
-                observed_at=payload.observed_at,
-                screenshot_ref=payload.screenshot_ref,
-                debounce_window_seconds=payload.debounce_window_seconds,
-            )
+            for index, message in enumerate(payload.messages):
+                self.debouncer.add_message(
+                    payload.conversation,
+                    message,
+                    observed_at=payload.observed_at,
+                    screenshot_ref=payload.screenshot_ref if index == len(payload.messages) - 1 else None,
+                    debounce_window_seconds=payload.debounce_window_seconds,
+                )
             return {
                 "handled": True,
                 "event_type": event.event_type,
@@ -123,6 +124,19 @@ class ControlPlaneService:
                     "stream_id": stream_id,
                     "event_id": event.event_id,
                     **summary,
+                }
+            )
+            if emit_logs:
+                emit_control_plane_log("control_plane_event_processed", processed[-1])
+        flushed_events = self.pipeline.flush_and_compact()
+        for flushed_event in flushed_events:
+            processed.append(
+                {
+                    "stream_id": current_stream_id,
+                    "event_id": flushed_event.event_id,
+                    "handled": True,
+                    "event_type": flushed_event.event_type,
+                    "action": "flush_debounce_and_publish_compaction",
                 }
             )
             if emit_logs:

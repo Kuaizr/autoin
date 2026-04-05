@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from autoin.config import Settings
 from autoin.infrastructure.models import (
@@ -214,6 +214,32 @@ def test_control_plane_run_once_processes_stream_entries() -> None:
     assert result["last_stream_id"] == "1-0"
     assert result["processed_count"] == 1
     assert result["processed"][0]["action"] == "publish_memory_compaction"
+
+
+def test_control_plane_run_once_flushes_buffered_messages_after_debounce() -> None:
+    broker = StubBroker()
+    service = build_service(broker)
+    broker.stream_entries = [
+        (
+            "1-0",
+            UnifiedEvent(
+                event_type=EventType.MESSAGE_BUFFERED,
+                metadata=EventMetadata(producer="wechat.observer"),
+                payload=MessagePayload(
+                    conversation=ConversationRef(platform=Platform.WECHAT, user_id="kzr"),
+                    messages=["我要下单这个产品，我的客户id是 abc123"],
+                    observed_at=datetime.now(UTC) - timedelta(seconds=2),
+                    debounce_window_seconds=1,
+                ),
+            ),
+        )
+    ]
+
+    result = service.run_once(emit_logs=False)
+
+    assert result["processed_count"] == 2
+    assert result["processed"][0]["action"] == "debounce_buffered_message"
+    assert result["processed"][1]["action"] == "flush_debounce_and_publish_compaction"
 
 
 def test_emit_control_plane_log_prints_json(capsys) -> None:
