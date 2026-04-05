@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from autoin.adapters import MockWindowsDriver, build_windows_driver
-from autoin.adapters.drivers import DriverActionResult, PywinautoUnavailableError
+from autoin.adapters.drivers import DriverActionResult, PywinautoUnavailableError, get_window_profile
 from autoin.adapters.drivers.pywinauto_driver import PywinautoDriver
 
 
@@ -59,6 +59,7 @@ def test_pywinauto_driver_returns_stubbed_window_resolution() -> None:
     assert window.app == "douyin"
     assert window.target_uid == "douyin_u2"
     assert window.locator_status == "stubbed"
+    assert window.backend == "uia"
 
 
 def test_pywinauto_driver_exposes_stubbed_rollback_contract() -> None:
@@ -70,3 +71,19 @@ def test_pywinauto_driver_exposes_stubbed_rollback_contract() -> None:
     assert result.operation == "rollback_ui"
     assert result.status == "stubbed"
     assert result.metadata["strategy"] == ["esc", "close_interference_popup"]
+
+
+def test_window_profile_catalog_exposes_platform_hints() -> None:
+    profile = get_window_profile("wechat")
+
+    assert profile.process_candidates == ["WeChat.exe"]
+    assert "微信" in profile.title_patterns
+    assert profile.default_capture_mode == "main_window"
+
+
+def test_unknown_window_profile_falls_back_to_generic_contract() -> None:
+    profile = get_window_profile("custom_app")
+
+    assert profile.app == "custom_app"
+    assert profile.title_patterns == ["custom_app"]
+    assert profile.default_capture_mode == "main_window"

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from sys import platform as sys_platform
 
+from autoin.adapters.drivers.catalog import get_window_profile
 from autoin.adapters.drivers.windows import DesktopDriver, DriverActionResult, WindowReference
 
 
@@ -26,11 +27,12 @@ class PywinautoDriver(DesktopDriver):
         self.artifact_root = artifact_root or Path("artifacts") / "windows"
 
     def resolve_window(self, app: str, target_uid: str | None) -> WindowReference:
-        locator = target_uid or f"{app}_main_window"
+        profile = get_window_profile(app)
+        locator = target_uid or "|".join(profile.title_patterns) or f"{app}_main_window"
         return WindowReference(
             app=app,
             target_uid=target_uid,
-            backend="uia",
+            backend=profile.backend,
             locator=locator,
             locator_status="stubbed",
         )

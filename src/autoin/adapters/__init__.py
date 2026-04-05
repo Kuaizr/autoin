@@ -8,7 +8,9 @@ from autoin.adapters.drivers import (
     MockWindowsDriver,
     PywinautoDriver,
     PywinautoUnavailableError,
+    WindowProfile,
     WindowReference,
+    get_window_profile,
 )
 from autoin.adapters.factory import build_executor_adapter, build_platform_action_registry, build_windows_driver
 from autoin.adapters.platforms import (
@@ -46,6 +48,7 @@ __all__ = [
     "build_windows_driver",
     "DouyinActionHandler",
     "WechatActionHandler",
+    "WindowProfile",
     "WindowReference",
     "XiaohongshuActionHandler",
     "XianyuActionHandler",
@@ -53,4 +56,5 @@ __all__ = [
     "build_wechat_action_registry",
     "build_xiaohongshu_action_registry",
     "build_xianyu_action_registry",
+    "get_window_profile",
 ]
