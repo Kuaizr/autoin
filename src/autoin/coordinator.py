@@ -7,6 +7,9 @@ from autoin.infrastructure.models import (
     ErrorPayload,
     EventMetadata,
     EventType,
+    IntakeDecisionPayload,
+    MemoryCompactionPayload,
+    TaskKind,
     TaskPayload,
     TaskPlan,
     TaskPlanState,
@@ -112,6 +115,18 @@ class Coordinator:
         released_stream_ids = self.complete_task(state, task)
         self.finalize_plan(state)
         return released_stream_ids
+
+    def handle_memory_compaction(self, payload: MemoryCompactionPayload) -> IntakeDecisionPayload:
+        messages = payload.recent_messages
+        joined = " ".join(messages).lower()
+        intent = "dispatch" if any(keyword in joined for keyword in ("地址", "电话", "下单", "货号", "发货")) else "reply"
+        suggested_tasks = [TaskKind.CHECK, TaskKind.UI_ACTION] if intent == "dispatch" else [TaskKind.REPLY]
+        return IntakeDecisionPayload(
+            conversation=payload.conversation,
+            intent=intent,
+            reason="keyword_router_v1",
+            suggested_tasks=suggested_tasks,
+        )
 
     def mark_task_status(
         self,

@@ -95,6 +95,16 @@ class MemoryCompactionPayload(BaseModel):
     compacted_at: datetime = Field(default_factory=utc_now)
 
 
+class IntakeDecisionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: ConversationRef
+    intent: Literal["reply", "dispatch"]
+    reason: str
+    suggested_tasks: list[TaskKind] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=utc_now)
+
+
 class TaskPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -175,6 +185,7 @@ class UnifiedEvent(BaseModel):
     metadata: EventMetadata
     payload: (
         MessagePayload
+        | IntakeDecisionPayload
         | MemoryCompactionPayload
         | TaskPayload
         | LockStatePayload
