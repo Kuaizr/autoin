@@ -84,7 +84,7 @@ def test_pywinauto_driver_exposes_stubbed_rollback_contract() -> None:
     assert result.metadata["strategy"] == ["esc", "close_interference_popup"]
 
 
-def test_open_wechat_search_and_select_target_exits_search_mode(monkeypatch) -> None:
+def test_open_wechat_search_and_select_target_uses_search_shortcut(monkeypatch) -> None:
     driver = object.__new__(PywinautoDriver)
     driver.artifact_root = Path("artifacts") / "windows"
     driver.enable_live_wechat = False
@@ -98,7 +98,33 @@ def test_open_wechat_search_and_select_target_exits_search_mode(monkeypatch) -> 
     driver._open_wechat_search_and_select_target("文件传输助手")
 
     assert clipboard_values == ["文件传输助手"]
-    assert calls == ["^f", "^v", "{ENTER}", "{ESC}"]
+    assert calls == ["^f", "^v", "{ENTER}"]
+
+
+def test_focus_wechat_editor_clicks_lower_editor_region(monkeypatch) -> None:
+    class Rectangle:
+        def width(self) -> int:
+            return 900
+
+        def height(self) -> int:
+            return 700
+
+    class Window:
+        def __init__(self) -> None:
+            self.clicks = []
+
+        def rectangle(self):  # noqa: ANN202
+            return Rectangle()
+
+        def click_input(self, coords):  # noqa: ANN001
+            self.clicks.append(coords)
+
+    window = Window()
+    monkeypatch.setattr("autoin.adapters.drivers.pywinauto_driver.time.sleep", lambda _: None)
+
+    PywinautoDriver._focus_wechat_editor(window)
+
+    assert window.clicks == [(450, 610)]
 
 
 def test_window_profile_catalog_exposes_platform_hints() -> None:
