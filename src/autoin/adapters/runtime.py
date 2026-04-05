@@ -255,6 +255,12 @@ class TaskWorker:
             processed.append(stream_id)
         return processed
 
+    def resume(self, pending_idle_ms: int = 0, poll_count: int = 10, poll_block_ms: int = 1000) -> dict[str, list[str]]:
+        return {
+            "recovered": self.recover_pending(idle_ms=pending_idle_ms),
+            "polled": self.poll_once(count=poll_count, block_ms=poll_block_ms),
+        }
+
     def _handle_failure(
         self,
         task: TaskPayload,

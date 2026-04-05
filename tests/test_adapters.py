@@ -237,3 +237,51 @@ def test_task_worker_can_recover_pending_tasks() -> None:
     assert processed == ["9-0"]
     assert broker.acked == ["9-0"]
     assert succeeded == ["task-1"]
+
+
+def test_task_worker_resume_recovers_then_polls() -> None:
+    broker = StubBroker()
+    lock_manager = StubLockManager()
+    succeeded = []
+
+    def route_success(task: TaskPayload):
+        succeeded.append(task.task_id)
+        return []
+
+    pending_task = TaskPayload(
+        task_id="task-pending",
+        plan_id="plan-1",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        action="send_group_message",
+    )
+    new_task = TaskPayload(
+        task_id="task-new",
+        plan_id="plan-1",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        action="send_group_message",
+    )
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    broker.tasks = [("9-0", pending_task)]
+    worker = TaskWorker(
+        broker,
+        executor,
+        consumer_name="worker-1",
+        success_handler=route_success,
+    )
+
+    original_pending_tasks = broker.pending_tasks
+    original_consume_tasks = broker.consume_tasks
+
+    broker.pending_tasks = lambda consumer_name, idle_ms: [("9-0", pending_task)]  # noqa: E731
+    broker.consume_tasks = lambda consumer_name, count, block_ms: [("10-0", new_task)]  # noqa: E731
+
+    resumed = worker.resume(pending_idle_ms=5000, poll_count=1, poll_block_ms=10)
+
+    broker.pending_tasks = original_pending_tasks
+    broker.consume_tasks = original_consume_tasks
+
+    assert resumed == {"recovered": ["9-0"], "polled": ["10-0"]}
+    assert broker.acked == ["9-0", "10-0"]
+    assert succeeded == ["task-pending", "task-new"]

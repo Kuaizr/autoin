@@ -227,3 +227,31 @@ def test_recover_active_plans_returns_persisted_states() -> None:
     recovered = coordinator.recover_active_plans()
 
     assert recovered == [state]
+
+
+def test_resume_all_releases_ready_tasks_for_recovered_plans() -> None:
+    broker = StubBroker()
+    coordinator = Coordinator(broker)
+    first = TaskPayload(
+        task_id="task-1",
+        kind=TaskKind.CHECK,
+        adapter="wechat.executor",
+        action="check",
+        sequence=1,
+    )
+    second = TaskPayload(
+        task_id="task-2",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        action="send",
+        sequence=2,
+        dependencies=["task-1"],
+    )
+
+    plan = coordinator.create_plan("corr-7", [first, second])
+    state = coordinator.initialize_plan_state(plan)
+
+    resumed = coordinator.resume_all()
+
+    assert resumed == {plan.plan_id: ["1-0"]}
+    assert state.released_task_ids == ["task-1"]

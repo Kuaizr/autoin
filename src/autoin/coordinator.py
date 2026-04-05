@@ -90,6 +90,12 @@ class Coordinator:
     def recover_active_plans(self) -> list[TaskPlanState]:
         return self.broker.list_plan_states()
 
+    def resume_all(self) -> dict[str, list[str]]:
+        resumed: dict[str, list[str]] = {}
+        for state in self.recover_active_plans():
+            resumed[state.plan.plan_id] = self.release_ready_tasks(state)
+        return resumed
+
     def finalize_plan(self, state: TaskPlanState) -> bool:
         all_tasks_done = len(state.completed_task_ids) == len(state.plan.tasks)
         if not all_tasks_done or state.blocked:
