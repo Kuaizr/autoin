@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from autoin.adapters.runtime import ExecutorAdapter, ObserverAdapter, TaskWorker
+from autoin.adapters import ActionRegistry, ExecutorAdapter, ObserverAdapter, TaskWorker
 from autoin.infrastructure.lock_manager import LockLease
 from autoin.infrastructure.models import (
     ConversationRef,
@@ -80,7 +80,9 @@ def test_observer_publishes_buffered_message_event() -> None:
 def test_executor_acquires_and_releases_lock_around_action() -> None:
     broker = StubBroker()
     lock_manager = StubLockManager()
-    adapter = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    registry = ActionRegistry()
+    registry.register("send_group_message", lambda task: {"action": task.action})
+    adapter = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager, action_registry=registry)
     task = TaskPayload(kind=TaskKind.UI_ACTION, adapter="wechat.executor", action="send_group_message")
 
     event = adapter.execute_action(task)
@@ -99,7 +101,9 @@ def test_executor_acquires_and_releases_lock_around_action() -> None:
 def test_task_worker_consumes_and_acks_executor_tasks() -> None:
     broker = StubBroker()
     lock_manager = StubLockManager()
-    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    registry = ActionRegistry()
+    registry.register("send_group_message", lambda task: {"action": task.action})
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager, action_registry=registry)
     broker.tasks = [
         ("1-0", TaskPayload(kind=TaskKind.UI_ACTION, adapter="wechat.executor", action="send_group_message"))
     ]
@@ -192,7 +196,9 @@ def test_task_worker_routes_success_to_handler() -> None:
         adapter="wechat.executor",
         action="send_group_message",
     )
-    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    registry = ActionRegistry()
+    registry.register("send_group_message", lambda task: {"action": task.action})
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager, action_registry=registry)
     broker.tasks = [("1-0", task)]
     worker = TaskWorker(
         broker,
@@ -223,7 +229,9 @@ def test_task_worker_can_recover_pending_tasks() -> None:
         adapter="wechat.executor",
         action="send_group_message",
     )
-    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    registry = ActionRegistry()
+    registry.register("send_group_message", lambda task: {"action": task.action})
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager, action_registry=registry)
     broker.tasks = [("9-0", task)]
     worker = TaskWorker(
         broker,
@@ -262,7 +270,9 @@ def test_task_worker_resume_recovers_then_polls() -> None:
         adapter="wechat.executor",
         action="send_group_message",
     )
-    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    registry = ActionRegistry()
+    registry.register("send_group_message", lambda task: {"action": task.action})
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager, action_registry=registry)
     broker.tasks = [("9-0", pending_task)]
     worker = TaskWorker(
         broker,

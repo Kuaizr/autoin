@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from socket import gethostname
 
+from autoin.adapters.actions import ActionRegistry, build_default_action_registry
 from autoin.adapters.base import BaseAdapter
 from autoin.infrastructure.broker import RedisBroker
 from autoin.infrastructure.lock_manager import LockAcquisitionError, RedisLockManager
@@ -86,12 +87,14 @@ class ExecutorAdapter(BaseAdapter):
         broker: RedisBroker,
         lock_manager: RedisLockManager,
         action_handler: Callable[[TaskPayload], dict[str, object]] | None = None,
+        action_registry: ActionRegistry | None = None,
     ) -> None:
         self.adapter_name = adapter_name
         self.platform_name = platform_name
         self.broker = broker
         self.lock_manager = lock_manager
-        self.action_handler = action_handler or self._default_action_handler
+        self.action_registry = action_registry or build_default_action_registry()
+        self.action_handler = action_handler
         self.rollback_invocations = 0
 
     def start_listening(self) -> None:
@@ -119,7 +122,7 @@ class ExecutorAdapter(BaseAdapter):
                     )
                 )
 
-            result = self.action_handler(task)
+            result = self._run_action(task)
             completed_task = running_task.model_copy(update={"status": TaskStatus.SUCCEEDED})
             event = UnifiedEvent(
                 event_type=EventType.ACTION_COMPLETED,
@@ -178,9 +181,10 @@ class ExecutorAdapter(BaseAdapter):
     def rollback_last_action(self) -> None:
         self.rollback_invocations += 1
 
-    @staticmethod
-    def _default_action_handler(task: TaskPayload) -> dict[str, object]:
-        return {"task_id": task.task_id, "action": task.action}
+    def _run_action(self, task: TaskPayload) -> dict[str, object]:
+        if self.action_handler is not None:
+            return self.action_handler(task)
+        return self.action_registry.dispatch(task)
 
     def _heartbeat_event(self) -> UnifiedEvent:
         return UnifiedEvent(
