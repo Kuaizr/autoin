@@ -140,23 +140,34 @@ class PywinautoDriver(DesktopDriver):
         window.set_focus()
         time.sleep(0.2)
 
-    def _send_wechat_message(self, target_uid: str | None, message: str) -> WindowReference:
+    @staticmethod
+    def _send_wechat_keys(keys: str) -> None:
         from pywinauto.keyboard import send_keys  # pragma: no cover - Windows-only runtime
 
+        send_keys(keys)
+
+    def _open_wechat_search_and_select_target(self, target_uid: str) -> None:
+        self._send_wechat_keys("^f")
+        time.sleep(0.2)
+        self._set_windows_clipboard_text(target_uid)
+        self._send_wechat_keys("^v")
+        time.sleep(0.2)
+        self._send_wechat_keys("{ENTER}")
+        time.sleep(0.6)
+        # Leave the search box explicitly so the next paste reaches the chat editor.
+        self._send_wechat_keys("{ESC}")
+        time.sleep(0.2)
+
+    def _send_wechat_message(self, target_uid: str | None, message: str) -> WindowReference:
         window = self._find_live_window("wechat")
         self._focus_window(window)
         if target_uid:
-            send_keys("^f")
-            time.sleep(0.2)
-            self._set_windows_clipboard_text(target_uid)
-            send_keys("^v")
-            time.sleep(0.2)
-            send_keys("{ENTER}")
-            time.sleep(0.4)
+            self._open_wechat_search_and_select_target(target_uid)
+            self._focus_window(window)
         self._set_windows_clipboard_text(message)
-        send_keys("^v")
+        self._send_wechat_keys("^v")
         time.sleep(0.2)
-        send_keys("{ENTER}")
+        self._send_wechat_keys("{ENTER}")
         return WindowReference(
             app="wechat",
             target_uid=target_uid,

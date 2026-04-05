@@ -84,6 +84,23 @@ def test_pywinauto_driver_exposes_stubbed_rollback_contract() -> None:
     assert result.metadata["strategy"] == ["esc", "close_interference_popup"]
 
 
+def test_open_wechat_search_and_select_target_exits_search_mode(monkeypatch) -> None:
+    driver = object.__new__(PywinautoDriver)
+    driver.artifact_root = Path("artifacts") / "windows"
+    driver.enable_live_wechat = False
+    calls: list[str] = []
+    clipboard_values: list[str] = []
+
+    monkeypatch.setattr(driver, "_send_wechat_keys", lambda keys: calls.append(keys))
+    monkeypatch.setattr(driver, "_set_windows_clipboard_text", lambda text: clipboard_values.append(text))
+    monkeypatch.setattr("autoin.adapters.drivers.pywinauto_driver.time.sleep", lambda _: None)
+
+    driver._open_wechat_search_and_select_target("文件传输助手")
+
+    assert clipboard_values == ["文件传输助手"]
+    assert calls == ["^f", "^v", "{ENTER}", "{ESC}"]
+
+
 def test_window_profile_catalog_exposes_platform_hints() -> None:
     profile = get_window_profile("wechat")
 
