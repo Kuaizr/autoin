@@ -90,6 +90,21 @@ def test_observe_wechat_customer_message_returns_idle_without_visible_message(tm
     assert broker.events == []
 
 
+def test_observe_wechat_customer_message_can_include_debug_texts(tmp_path: Path) -> None:
+    broker = StubBroker()
+
+    result = observe_wechat_customer_message(
+        "kzr",
+        broker=broker,
+        driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
+        state_file=tmp_path / "observer-state.json",
+        include_debug_texts=True,
+    )
+
+    assert result["status"] == "emitted"
+    assert result["visible_texts"] == ["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]
+
+
 def test_run_wechat_observer_loop_returns_poll_summary(tmp_path: Path) -> None:
     broker = StubBroker()
 

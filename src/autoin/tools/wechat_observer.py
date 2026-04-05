@@ -68,6 +68,7 @@ def observe_wechat_customer_message(
     settings: Settings | None = None,
     driver: Any | None = None,
     state_file: Path = DEFAULT_STATE_FILE,
+    include_debug_texts: bool = False,
 ) -> dict[str, Any]:
     resolved_settings = settings
     if resolved_settings is None and broker is None:
@@ -82,27 +83,33 @@ def observe_wechat_customer_message(
     previous_message = state.get(conversation.uid, {}).get("last_message")
 
     if latest_message is None:
-        return {
+        result = {
             "status": "idle",
             "conversation_uid": conversation.uid,
             "observed_message": None,
             "emitted": False,
             "window": observation.get("window"),
         }
+        if include_debug_texts:
+            result["visible_texts"] = observation.get("texts", [])
+        return result
 
     if latest_message == previous_message:
-        return {
+        result = {
             "status": "deduplicated",
             "conversation_uid": conversation.uid,
             "observed_message": latest_message,
             "emitted": False,
             "window": observation.get("window"),
         }
+        if include_debug_texts:
+            result["visible_texts"] = observation.get("texts", [])
+        return result
 
     event = observer.emit_messages(conversation=conversation, messages=[latest_message])
     state[conversation.uid] = {"last_message": latest_message}
     save_observer_state(state_file, state)
-    return {
+    result = {
         "status": "emitted",
         "event_id": event.event_id,
         "event_type": event.event_type,
@@ -111,6 +118,9 @@ def observe_wechat_customer_message(
         "emitted": True,
         "window": observation.get("window"),
     }
+    if include_debug_texts:
+        result["visible_texts"] = observation.get("texts", [])
+    return result
 
 
 def run_wechat_observer_loop(
@@ -123,6 +133,7 @@ def run_wechat_observer_loop(
     driver: Any | None = None,
     state_file: Path = DEFAULT_STATE_FILE,
     emit_logs: bool = False,
+    include_debug_texts: bool = False,
 ) -> dict[str, Any]:
     polls = 0
     snapshots: list[dict[str, Any]] = []
@@ -133,6 +144,7 @@ def run_wechat_observer_loop(
             settings=settings,
             driver=driver,
             state_file=state_file,
+            include_debug_texts=include_debug_texts,
         )
         snapshots.append(snapshot)
         polls += 1
@@ -163,6 +175,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-polls", type=int, default=None, help="Run N polling iterations and exit. Omit for an endless loop.")
     parser.add_argument("--state-file", default=str(DEFAULT_STATE_FILE))
     parser.add_argument("--once", action="store_true", help="Observe once and exit.")
+    parser.add_argument("--debug-visible-texts", action="store_true", help="Include extracted visible texts in observer output for Windows UI debugging.")
     parser.add_argument("--quiet", action="store_true", help="Suppress per-poll logs and only print the final JSON summary.")
     return parser.parse_args(argv)
 
@@ -174,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         result = observe_wechat_customer_message(
             args.customer_user_id,
             state_file=state_file,
+            include_debug_texts=args.debug_visible_texts,
         )
     else:
         result = run_wechat_observer_loop(
@@ -182,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
             max_polls=args.max_polls,
             state_file=state_file,
             emit_logs=not args.quiet,
+            include_debug_texts=args.debug_visible_texts,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0

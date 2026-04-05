@@ -229,23 +229,54 @@ class PywinautoDriver(DesktopDriver):
         raise last_error
 
     @staticmethod
-    def _read_visible_text_controls(window) -> list[str]:  # noqa: ANN001
+    def _safe_collect_control_texts(control) -> list[str]:  # noqa: ANN001
         texts: list[str] = []
-        for control in window.descendants(control_type="Text"):
+        for accessor in ("window_text", "texts", "legacy_properties"):
+            try:
+                value = getattr(control, accessor)()
+            except Exception:
+                continue
+            if isinstance(value, str):
+                candidate_values = [value]
+            elif isinstance(value, dict):
+                candidate_values = [str(item) for item in value.values()]
+            else:
+                candidate_values = [str(item) for item in value if item]
+            for candidate in candidate_values:
+                cleaned = candidate.strip()
+                if not cleaned:
+                    continue
+                if texts and texts[-1] == cleaned:
+                    continue
+                texts.append(cleaned)
+        return texts
+
+    @classmethod
+    def _read_visible_text_controls(cls, window) -> list[str]:  # noqa: ANN001
+        texts: list[str] = []
+        control_types = {"Text", "Edit", "ListItem", "Document", "Pane", "Button"}
+        controls = [window]
+        try:
+            controls.extend(window.descendants())
+        except Exception:
+            pass
+        for control in controls:
             try:
                 if hasattr(control, "is_visible") and not control.is_visible():
                     continue
             except Exception:
                 continue
             try:
-                text = control.window_text().strip()
+                element_info = getattr(control, "element_info", None)
+                control_type = getattr(element_info, "control_type", None)
             except Exception:
+                control_type = None
+            if control_type and control_type not in control_types:
                 continue
-            if not text:
-                continue
-            if texts and texts[-1] == text:
-                continue
-            texts.append(text)
+            for text in cls._safe_collect_control_texts(control):
+                if texts and texts[-1] == text:
+                    continue
+                texts.append(text)
         return texts
 
     def observe_wechat_conversation(self, target_uid: str | None = None) -> dict[str, object]:
