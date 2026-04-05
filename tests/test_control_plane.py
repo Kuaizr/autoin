@@ -115,8 +115,10 @@ def test_control_plane_extracts_wechat_customer_id_and_dispatch_target() -> None
     assert result["handled"] is True
     assert result["action"] == "route_and_plan"
     latest_state = list(broker.plan_states.values())[-1]
-    assert latest_state.plan.tasks[1].arguments["dispatch_target_uid"] == "文件传输助手"
-    assert latest_state.plan.tasks[1].arguments["extracted_fields"] == {"customer_id": "abc123"}
+    assert len(latest_state.plan.tasks) == 1
+    assert latest_state.plan.tasks[0].arguments["dispatch_target_uid"] == "文件传输助手"
+    assert latest_state.plan.tasks[0].arguments["extracted_fields"] == {"customer_id": "abc123"}
+    assert broker.tasks[0].action == "send_dispatch_message"
 
 
 def test_control_plane_releases_followup_tasks_after_action_completed() -> None:

@@ -31,6 +31,23 @@ class BrainAgent:
                 )
             ]
 
+        if decision.conversation.platform == Platform.WECHAT and decision.extracted_fields.get("customer_id"):
+            return [
+                TaskPayload(
+                    kind=TaskKind.UI_ACTION,
+                    sequence=1,
+                    adapter=self.dispatch_adapter,
+                    target=decision.conversation,
+                    action="send_dispatch_message",
+                    arguments={
+                        "source_platform": decision.conversation.platform,
+                        "dispatch_target_uid": decision.dispatch_target_uid,
+                        "extracted_fields": dict(decision.extracted_fields),
+                        "reason": decision.reason,
+                    },
+                )
+            ]
+
         check_task = TaskPayload(
             kind=TaskKind.CHECK,
             sequence=1,

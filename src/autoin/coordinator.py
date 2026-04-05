@@ -225,6 +225,7 @@ class Coordinator:
         if payload.conversation.platform == Platform.WECHAT and extracted_fields.get("customer_id"):
             dispatch_target_uid = "文件传输助手"
             reason = "wechat_gaming_broker_v1"
+            suggested_tasks = [TaskKind.UI_ACTION]
         return IntakeDecisionPayload(
             conversation=payload.conversation,
             intent=intent,

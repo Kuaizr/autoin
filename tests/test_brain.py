@@ -48,5 +48,8 @@ def test_brain_agent_carries_dispatch_target_and_customer_fields() -> None:
 
     tasks = brain.build_tasks(decision)
 
-    assert tasks[1].arguments["dispatch_target_uid"] == "文件传输助手"
-    assert tasks[1].arguments["extracted_fields"] == {"customer_id": "abc123"}
+    assert len(tasks) == 1
+    assert tasks[0].kind == TaskKind.UI_ACTION
+    assert tasks[0].adapter == "wechat.executor"
+    assert tasks[0].arguments["dispatch_target_uid"] == "文件传输助手"
+    assert tasks[0].arguments["extracted_fields"] == {"customer_id": "abc123"}
