@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from autoin.adapters.actions import ActionRegistry, build_default_action_registry
-from autoin.adapters.platforms import build_wechat_action_registry, build_xiaohongshu_action_registry
+from autoin.adapters.platforms import (
+    build_douyin_action_registry,
+    build_wechat_action_registry,
+    build_xiaohongshu_action_registry,
+    build_xianyu_action_registry,
+)
 from autoin.adapters.runtime import ExecutorAdapter
 from autoin.infrastructure.broker import RedisBroker
 from autoin.infrastructure.lock_manager import RedisLockManager
@@ -13,6 +18,10 @@ def build_platform_action_registry(platform: Platform) -> ActionRegistry:
         return build_wechat_action_registry()
     if platform == Platform.XIAOHONGSHU:
         return build_xiaohongshu_action_registry()
+    if platform == Platform.DOUYIN:
+        return build_douyin_action_registry()
+    if platform == Platform.XIANYU:
+        return build_xianyu_action_registry()
     return build_default_action_registry()
 
 
