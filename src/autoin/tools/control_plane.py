@@ -55,6 +55,12 @@ class ControlPlaneService:
             }
 
         if event.event_type == EventType.MESSAGE_DEBOUNCED:
+            if event.metadata.producer == self.debouncer.producer_name:
+                return {
+                    "handled": False,
+                    "event_type": event.event_type,
+                    "action": "skip_self_managed_debounced_event",
+                }
             payload = event.payload
             compaction_event = self.compactor.publish_compaction(
                 conversation=payload.conversation,

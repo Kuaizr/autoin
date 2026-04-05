@@ -76,6 +76,25 @@ def test_control_plane_processes_debounced_message_into_compaction() -> None:
     assert broker.events[-1].event_type == EventType.MEMORY_COMPACTED
 
 
+def test_control_plane_skips_self_managed_debounced_event() -> None:
+    broker = StubBroker()
+    service = build_service(broker)
+    event = UnifiedEvent(
+        event_type=EventType.MESSAGE_DEBOUNCED,
+        metadata=EventMetadata(producer=service.debouncer.producer_name),
+        payload=MessagePayload(
+            conversation=ConversationRef(platform=Platform.WECHAT, user_id="kzr"),
+            messages=["我要下单这个产品，我的客户id是 abc123"],
+        ),
+    )
+
+    result = service.process_event(event)
+
+    assert result["handled"] is False
+    assert result["action"] == "skip_self_managed_debounced_event"
+    assert broker.events == []
+
+
 def test_control_plane_routes_compacted_event_into_tasks() -> None:
     broker = StubBroker()
     service = build_service(broker)
