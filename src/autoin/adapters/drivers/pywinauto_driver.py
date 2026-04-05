@@ -296,6 +296,57 @@ class PywinautoDriver(DesktopDriver):
             "texts": texts,
         }
 
+    @classmethod
+    def _collect_uia_debug_nodes(cls, window, max_nodes: int = 200) -> list[dict[str, object]]:  # noqa: ANN001
+        nodes: list[dict[str, object]] = []
+        queue: list[tuple[object, int]] = [(window, 0)]
+        while queue and len(nodes) < max_nodes:
+            control, depth = queue.pop(0)
+            try:
+                element_info = getattr(control, "element_info", None)
+                control_type = getattr(element_info, "control_type", None)
+                class_name = getattr(element_info, "class_name", None)
+                automation_id = getattr(element_info, "automation_id", None)
+                name = getattr(element_info, "name", None)
+            except Exception:
+                control_type = None
+                class_name = None
+                automation_id = None
+                name = None
+            texts = cls._safe_collect_control_texts(control)
+            nodes.append(
+                {
+                    "depth": depth,
+                    "control_type": control_type,
+                    "class_name": class_name,
+                    "automation_id": automation_id,
+                    "name": name,
+                    "texts": texts,
+                }
+            )
+            try:
+                children = list(control.children())
+            except Exception:
+                children = []
+            for child in children:
+                queue.append((child, depth + 1))
+        return nodes
+
+    def dump_wechat_uia_tree(self, max_nodes: int = 200) -> dict[str, object]:
+        window = self._find_live_window("wechat")
+        return {
+            "driver": "pywinauto",
+            "app": "wechat",
+            "window": WindowReference(
+                app="wechat",
+                target_uid=None,
+                backend=get_window_profile("wechat").backend,
+                locator=window.window_text() or "wechat_window",
+                locator_status="resolved",
+            ),
+            "nodes": self._collect_uia_debug_nodes(window, max_nodes=max_nodes),
+        }
+
     def build_capture_artifact_path(self, app: str, target_uid: str | None, mode: str) -> Path:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         safe_target = (target_uid or "broadcast").replace("/", "_").replace("\\", "_")
