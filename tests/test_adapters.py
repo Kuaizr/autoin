@@ -33,6 +33,9 @@ class StubBroker:
         self.acked.append(stream_id)
         return 1
 
+    def pending_tasks(self, consumer_name: str, idle_ms: int):  # noqa: ANN001
+        return list(self.tasks)
+
 
 class StubLockManager:
     def __init__(self) -> None:
@@ -201,4 +204,36 @@ def test_task_worker_routes_success_to_handler() -> None:
     processed = worker.poll_once()
 
     assert processed == ["1-0"]
+    assert succeeded == ["task-1"]
+
+
+def test_task_worker_can_recover_pending_tasks() -> None:
+    broker = StubBroker()
+    lock_manager = StubLockManager()
+    succeeded = []
+
+    def route_success(task: TaskPayload):
+        succeeded.append(task.task_id)
+        return []
+
+    task = TaskPayload(
+        task_id="task-1",
+        plan_id="plan-1",
+        kind=TaskKind.UI_ACTION,
+        adapter="wechat.executor",
+        action="send_group_message",
+    )
+    executor = ExecutorAdapter("wechat.executor", Platform.WECHAT, broker, lock_manager)
+    broker.tasks = [("9-0", task)]
+    worker = TaskWorker(
+        broker,
+        executor,
+        consumer_name="worker-1",
+        success_handler=route_success,
+    )
+
+    processed = worker.recover_pending(idle_ms=5000)
+
+    assert processed == ["9-0"]
+    assert broker.acked == ["9-0"]
     assert succeeded == ["task-1"]

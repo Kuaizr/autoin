@@ -238,6 +238,23 @@ class TaskWorker:
             processed.extend(self.poll_once(count=count, block_ms=block_ms))
         return processed
 
+    def recover_pending(self, idle_ms: int = 0) -> list[str]:
+        processed: list[str] = []
+        for stream_id, task in self.broker.pending_tasks(
+            consumer_name=self.consumer_name,
+            idle_ms=idle_ms,
+        ):
+            try:
+                self.executor.execute_action(task)
+                self._handle_success(task)
+            except LockAcquisitionError as exc:
+                self._handle_failure(task, "ui_lock_unavailable", str(exc), retryable=True)
+            except Exception as exc:
+                self._handle_failure(task, "action_execution_failed", str(exc), retryable=True)
+            self.broker.ack_task(stream_id)
+            processed.append(stream_id)
+        return processed
+
     def _handle_failure(
         self,
         task: TaskPayload,

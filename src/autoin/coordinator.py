@@ -87,6 +87,9 @@ class Coordinator:
     def get_plan_state(self, plan_id: str) -> TaskPlanState | None:
         return self.broker.load_plan_state(plan_id)
 
+    def recover_active_plans(self) -> list[TaskPlanState]:
+        return self.broker.list_plan_states()
+
     def finalize_plan(self, state: TaskPlanState) -> bool:
         all_tasks_done = len(state.completed_task_ids) == len(state.plan.tasks)
         if not all_tasks_done or state.blocked:

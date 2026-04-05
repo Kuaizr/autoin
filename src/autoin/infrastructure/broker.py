@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from fnmatch import fnmatch
 
 from redis import Redis
 
@@ -84,6 +85,16 @@ class RedisBroker:
     def plan_state_key(self, plan_id: str) -> str:
         return f"{self.settings.redis_plan_state_prefix}:{plan_id}"
 
+    def list_plan_states(self) -> list[TaskPlanState]:
+        pattern = f"{self.settings.redis_plan_state_prefix}:*"
+        states: list[TaskPlanState] = []
+        for key in self.client.scan_iter(match=pattern):
+            raw_state = self.client.get(key)
+            if raw_state is None:
+                continue
+            states.append(TaskPlanState.model_validate_json(raw_state))
+        return states
+
     def ensure_consumer_group(self, group_name: str | None = None) -> None:
         group = group_name or self.settings.redis_consumer_group
         try:
@@ -130,6 +141,35 @@ class RedisBroker:
                 stream_id,
             )
         )
+
+    def pending_tasks(
+        self,
+        consumer_name: str | None = None,
+        group_name: str | None = None,
+        idle_ms: int = 0,
+    ) -> list[tuple[str, TaskPayload]]:
+        group = group_name or self.settings.redis_consumer_group
+        pending = self.client.xpending_range(
+            self.settings.redis_task_stream_key,
+            group,
+            min="-",
+            max="+",
+            count=100,
+            consumername=consumer_name,
+            idle=idle_ms,
+        )
+        entries: list[tuple[str, TaskPayload]] = []
+        for item in pending:
+            stream_id = str(item["message_id"])
+            claimed = self.client.xrange(self.settings.redis_task_stream_key, min=stream_id, max=stream_id, count=1)
+            if not claimed:
+                continue
+            _, fields = claimed[0]
+            raw_task = fields.get("task")
+            if not raw_task:
+                continue
+            entries.append((stream_id, TaskPayload.model_validate_json(raw_task)))
+        return entries
 
     def subscribe(self) -> Iterator[UnifiedEvent]:
         pubsub = self.client.pubsub(ignore_subscribe_messages=True)

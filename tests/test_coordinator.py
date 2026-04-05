@@ -32,6 +32,9 @@ class StubBroker:
         self.plan_states.pop(plan_id, None)
         return int(existed)
 
+    def list_plan_states(self):
+        return list(self.plan_states.values())
+
 
 def test_create_plan_requires_dependencies_to_appear_earlier() -> None:
     broker = StubBroker()
@@ -205,3 +208,22 @@ def test_handle_task_success_releases_next_tasks_and_cleans_up_completed_plan() 
     completed = coordinator.handle_task_success(second_task)
     assert completed == []
     assert coordinator.get_plan_state(plan.plan_id) is None
+
+
+def test_recover_active_plans_returns_persisted_states() -> None:
+    broker = StubBroker()
+    coordinator = Coordinator(broker)
+    task = TaskPayload(
+        task_id="task-1",
+        kind=TaskKind.CHECK,
+        adapter="wechat.executor",
+        action="check",
+        sequence=1,
+    )
+
+    plan = coordinator.create_plan("corr-6", [task])
+    state, _ = coordinator.dispatch_plan(plan)
+
+    recovered = coordinator.recover_active_plans()
+
+    assert recovered == [state]
