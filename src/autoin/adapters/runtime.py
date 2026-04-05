@@ -24,6 +24,7 @@ from autoin.infrastructure.models import (
 
 FailureHandler = Callable[[TaskPayload, str, str, bool], tuple[str, UnifiedEvent]]
 SuccessHandler = Callable[[TaskPayload], list[str] | None]
+RollbackHandler = Callable[[], dict[str, object] | object | None]
 
 
 class ObserverAdapter(BaseAdapter):
@@ -113,6 +114,7 @@ class ExecutorAdapter(BaseAdapter):
         lock_manager: RedisLockManager,
         action_handler: Callable[[TaskPayload], dict[str, object]] | None = None,
         action_registry: ActionRegistry | None = None,
+        rollback_handler: RollbackHandler | None = None,
     ) -> None:
         self.adapter_name = adapter_name
         self.platform_name = platform_name
@@ -120,7 +122,9 @@ class ExecutorAdapter(BaseAdapter):
         self.lock_manager = lock_manager
         self.action_registry = action_registry or build_default_action_registry()
         self.action_handler = action_handler
+        self.rollback_handler = rollback_handler
         self.rollback_invocations = 0
+        self.last_rollback_result: dict[str, object] | None = None
 
     def start_listening(self) -> None:
         self.broker.publish(self._heartbeat_event())
@@ -205,6 +209,18 @@ class ExecutorAdapter(BaseAdapter):
 
     def rollback_last_action(self) -> None:
         self.rollback_invocations += 1
+        if self.rollback_handler is None:
+            self.last_rollback_result = None
+            return None
+        result = self.rollback_handler()
+        if hasattr(result, "model_dump"):
+            self.last_rollback_result = result.model_dump(mode="json", exclude_none=True)
+            return None
+        if isinstance(result, dict):
+            self.last_rollback_result = result
+            return None
+        self.last_rollback_result = None
+        return None
 
     def _run_action(self, task: TaskPayload) -> dict[str, object]:
         if self.action_handler is not None:

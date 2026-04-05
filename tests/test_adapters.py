@@ -122,9 +122,14 @@ def test_task_worker_consumes_and_acks_executor_tasks() -> None:
 def test_executor_rolls_back_when_action_handler_fails() -> None:
     broker = StubBroker()
     lock_manager = StubLockManager()
+    rollback_calls = []
 
     def failing_handler(task: TaskPayload) -> dict[str, object]:
         raise RuntimeError(f"action failed for {task.task_id}")
+
+    def rollback_handler() -> dict[str, object]:
+        rollback_calls.append("rollback")
+        return {"operation": "rollback_ui", "status": "ok"}
 
     adapter = ExecutorAdapter(
         "wechat.executor",
@@ -132,6 +137,7 @@ def test_executor_rolls_back_when_action_handler_fails() -> None:
         broker,
         lock_manager,
         action_handler=failing_handler,
+        rollback_handler=rollback_handler,
     )
 
     try:
@@ -144,6 +150,8 @@ def test_executor_rolls_back_when_action_handler_fails() -> None:
         raise AssertionError("Expected the executor to propagate action failures.")
 
     assert adapter.rollback_invocations == 1
+    assert rollback_calls == ["rollback"]
+    assert adapter.last_rollback_result == {"operation": "rollback_ui", "status": "ok"}
     assert EventType.ERROR_RAISED in [published.event_type for published in broker.events]
 
 

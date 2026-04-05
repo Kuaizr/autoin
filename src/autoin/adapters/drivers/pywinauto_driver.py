@@ -70,3 +70,15 @@ class PywinautoDriver(DesktopDriver):
             window=window,
             metadata={"artifact_dir": str(artifact_dir), "backend": window.backend},
         )
+
+    def rollback_ui(self, app: str, target_uid: str | None = None) -> DriverActionResult:
+        window = self.resolve_window(app, target_uid)
+        return DriverActionResult(
+            driver="pywinauto",
+            operation="rollback_ui",
+            status="stubbed",
+            app=app,
+            target_uid=target_uid,
+            window=window,
+            metadata={"strategy": ["esc", "close_interference_popup"], "backend": window.backend},
+        )

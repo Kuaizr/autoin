@@ -59,3 +59,14 @@ def test_pywinauto_driver_returns_stubbed_window_resolution() -> None:
     assert window.app == "douyin"
     assert window.target_uid == "douyin_u2"
     assert window.locator_status == "stubbed"
+
+
+def test_pywinauto_driver_exposes_stubbed_rollback_contract() -> None:
+    driver = object.__new__(PywinautoDriver)
+    driver.artifact_root = Path("artifacts") / "windows"
+
+    result = driver.rollback_ui(app="wechat", target_uid="wechat_u3")
+
+    assert result.operation == "rollback_ui"
+    assert result.status == "stubbed"
+    assert result.metadata["strategy"] == ["esc", "close_interference_popup"]

@@ -58,3 +58,19 @@ def test_build_executor_adapter_uses_platform_registry() -> None:
     event = adapter.execute_action(task)
 
     assert event.payload.status == "succeeded"
+
+
+def test_build_executor_adapter_wires_driver_rollback_handler() -> None:
+    broker = StubBroker()
+    adapter = build_executor_adapter(
+        adapter_name="wechat.executor",
+        platform_name=Platform.WECHAT,
+        broker=broker,
+        lock_manager=StubLockManager(),
+    )
+
+    adapter.rollback_last_action()
+
+    assert adapter.last_rollback_result is not None
+    assert adapter.last_rollback_result["operation"] == "rollback_ui"
+    assert adapter.last_rollback_result["app"] == "wechat"

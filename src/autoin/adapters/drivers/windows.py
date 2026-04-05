@@ -52,6 +52,10 @@ class DesktopDriver(ABC):
     def capture_window(self, app: str, target_uid: str | None, mode: str) -> DriverActionResult:
         """Capture a window or region and return metadata."""
 
+    @abstractmethod
+    def rollback_ui(self, app: str, target_uid: str | None = None) -> DriverActionResult:
+        """Best-effort recovery, such as sending ESC or closing a blocking popup."""
+
 
 class MockWindowsDriver(DesktopDriver):
     """Non-Windows placeholder driver used until real automation is wired in."""
@@ -86,4 +90,20 @@ class MockWindowsDriver(DesktopDriver):
                 locator=target_uid or f"{app}_default",
                 locator_status="mocked",
             ),
+        )
+
+    def rollback_ui(self, app: str, target_uid: str | None = None) -> DriverActionResult:
+        return DriverActionResult(
+            driver="mock_windows",
+            operation="rollback_ui",
+            status="mocked",
+            app=app,
+            target_uid=target_uid,
+            window=WindowReference(
+                app=app,
+                target_uid=target_uid,
+                locator=target_uid or f"{app}_default",
+                locator_status="mocked",
+            ),
+            metadata={"strategy": ["esc", "dismiss_popup"]},
         )

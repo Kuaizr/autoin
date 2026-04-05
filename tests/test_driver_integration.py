@@ -29,6 +29,16 @@ class RecordingDriver(DesktopDriver):
             mode=mode,
         )
 
+    def rollback_ui(self, app: str, target_uid: str | None = None) -> DriverActionResult:
+        self.calls.append(("rollback_ui", app, target_uid))
+        return DriverActionResult(
+            driver="recording",
+            operation="rollback_ui",
+            status="ok",
+            app=app,
+            target_uid=target_uid,
+        )
+
 
 def test_platform_registry_uses_driver_for_wechat_send() -> None:
     driver = RecordingDriver()

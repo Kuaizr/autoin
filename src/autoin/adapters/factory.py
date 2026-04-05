@@ -49,6 +49,7 @@ def build_executor_adapter(
     driver: DesktopDriver | None = None,
     prefer_pywinauto: bool = False,
 ) -> ExecutorAdapter:
+    selected_driver = driver or build_windows_driver(prefer_pywinauto=prefer_pywinauto)
     return ExecutorAdapter(
         adapter_name=adapter_name,
         platform_name=platform_name,
@@ -56,6 +57,7 @@ def build_executor_adapter(
         lock_manager=lock_manager,
         action_registry=build_platform_action_registry(
             platform_name,
-            driver=driver or build_windows_driver(prefer_pywinauto=prefer_pywinauto),
+            driver=selected_driver,
         ),
+        rollback_handler=lambda: selected_driver.rollback_ui(platform_name.value),
     )
