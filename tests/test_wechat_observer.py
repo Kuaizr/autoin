@@ -4,6 +4,8 @@ from pathlib import Path
 from autoin.adapters.drivers import WindowReference
 from autoin.infrastructure.models import EventType
 from autoin.tools.wechat_observer import (
+    WechatFerryUnavailableError,
+    WcferryObserverClient,
     extract_ocr_lines,
     load_observer_state,
     main,
@@ -84,6 +86,52 @@ class StubDriver:
         return ""
 
 
+class StubWcfMessage:
+    def __init__(
+        self,
+        *,
+        sender: str = "wxid_kzr",
+        content: str = "我要下单这个产品，我的客户id是 abc123",
+        roomid: str = "",
+        msg_type: int = 1,
+        is_self: bool = False,
+        is_group: bool = False,
+    ) -> None:
+        self.sender = sender
+        self.content = content
+        self.roomid = roomid
+        self.type = msg_type
+        self._is_self = is_self
+        self._is_group = is_group
+
+    def from_self(self) -> bool:
+        return self._is_self
+
+    def from_group(self) -> bool:
+        return self._is_group
+
+
+class StubWcfClient:
+    def __init__(self, message: StubWcfMessage | None = None, *, receiving: bool = False, logged_in: bool = True) -> None:
+        self.message = message
+        self.receiving = receiving
+        self.logged_in = logged_in
+        self.enable_calls = 0
+
+    def is_login(self) -> bool:
+        return self.logged_in
+
+    def is_receiving_msg(self) -> bool:
+        return self.receiving
+
+    def enable_receiving_msg(self) -> None:
+        self.enable_calls += 1
+        self.receiving = True
+
+    def get_msg(self):  # noqa: ANN202
+        return self.message
+
+
 def test_normalize_visible_texts_compacts_blanks_and_repeats() -> None:
     assert normalize_visible_texts(["", "  hello  ", "hello", "foo\nbar"]) == ["hello", "foo bar"]
 
@@ -101,6 +149,24 @@ def test_extract_ocr_lines_splits_non_empty_lines() -> None:
     assert extract_ocr_lines("abc123\n\n文件传输助手\n") == ["abc123", "文件传输助手"]
 
 
+def test_wcferry_observer_client_enables_receiving_mode() -> None:
+    client = StubWcfClient(receiving=False)
+
+    observer = WcferryObserverClient(client)
+
+    assert observer.client is client
+    assert client.enable_calls == 1
+
+
+def test_wcferry_observer_client_requires_logged_in_wechat() -> None:
+    try:
+        WcferryObserverClient(StubWcfClient(logged_in=False))
+    except WechatFerryUnavailableError as exc:
+        assert "not logged in" in str(exc)
+    else:
+        raise AssertionError("Expected WcferryObserverClient to reject logged-out clients.")
+
+
 def test_observe_wechat_customer_message_emits_once_per_new_message(tmp_path: Path) -> None:
     broker = StubBroker()
     state_file = tmp_path / "observer-state.json"
@@ -110,12 +176,14 @@ def test_observe_wechat_customer_message_emits_once_per_new_message(tmp_path: Pa
         broker=broker,
         driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
         state_file=state_file,
+        backend="pywinauto",
     )
     second = observe_wechat_customer_message(
         "kzr",
         broker=broker,
         driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
         state_file=state_file,
+        backend="pywinauto",
     )
 
     assert first["status"] == "emitted"
@@ -133,6 +201,7 @@ def test_observe_wechat_customer_message_returns_idle_without_visible_message(tm
         broker=broker,
         driver=StubDriver(["微信", "kzr", "12:34"]),
         state_file=tmp_path / "observer-state.json",
+        backend="pywinauto",
     )
 
     assert result["status"] == "idle"
@@ -148,10 +217,12 @@ def test_observe_wechat_customer_message_can_include_debug_texts(tmp_path: Path)
         driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
         state_file=tmp_path / "observer-state.json",
         include_debug_texts=True,
+        backend="pywinauto",
     )
 
     assert result["status"] == "emitted"
     assert result["visible_texts"] == ["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]
+    assert result["backend"] == "pywinauto"
 
 
 def test_observe_wechat_customer_message_can_fallback_to_ocr(tmp_path: Path) -> None:
@@ -170,6 +241,7 @@ def test_observe_wechat_customer_message_can_fallback_to_ocr(tmp_path: Path) -> 
         state_file=tmp_path / "observer-state.json",
         enable_ocr_fallback=True,
         include_debug_texts=True,
+        backend="pywinauto",
     )
 
     assert result["status"] == "emitted"
@@ -196,6 +268,7 @@ def test_observe_wechat_customer_message_reports_missing_tesseract(tmp_path: Pat
         state_file=tmp_path / "observer-state.json",
         enable_ocr_fallback=True,
         include_debug_texts=True,
+        backend="pywinauto",
     )
 
     assert result["status"] == "idle"
@@ -213,6 +286,7 @@ def test_run_wechat_observer_loop_returns_poll_summary(tmp_path: Path) -> None:
         broker=broker,
         driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
         state_file=tmp_path / "observer-state.json",
+        backend="pywinauto",
     )
 
     assert result["polls"] == 1
@@ -229,6 +303,8 @@ def test_run_wechat_observer_loop_emits_json_safe_logs(tmp_path: Path, capsys) -
         driver=StubDriver(["微信", "kzr", "我要下单这个产品，我的客户id是 abc123"]),
         state_file=tmp_path / "observer-state.json",
         emit_logs=True,
+        include_debug_texts=True,
+        backend="pywinauto",
     )
     captured = capsys.readouterr()
 
@@ -236,6 +312,60 @@ def test_run_wechat_observer_loop_emits_json_safe_logs(tmp_path: Path, capsys) -
     assert '"event": "observer_poll_completed"' in captured.out
     assert '"window":' in captured.out
     assert "locator='微信'" in captured.out
+
+
+def test_observe_wechat_customer_message_prefers_wcferry_auto_backend(tmp_path: Path) -> None:
+    broker = StubBroker()
+    client = StubWcfClient(message=StubWcfMessage(sender="wxid_kzr"))
+
+    result = observe_wechat_customer_message(
+        "wxid_kzr",
+        broker=broker,
+        wcf_client=client,
+        state_file=tmp_path / "observer-state.json",
+        include_debug_texts=True,
+        backend="auto",
+    )
+
+    assert result["status"] == "emitted"
+    assert result["backend"] == "wcferry"
+    assert result["observed_message"] == "我要下单这个产品，我的客户id是 abc123"
+    assert result["received"]["sender"] == "wxid_kzr"
+
+
+def test_observe_wechat_customer_message_wcferry_can_accept_any_sender(tmp_path: Path) -> None:
+    broker = StubBroker()
+    client = StubWcfClient(message=StubWcfMessage(sender="wxid_unknown"))
+
+    result = observe_wechat_customer_message(
+        "kzr",
+        broker=broker,
+        wcf_client=client,
+        state_file=tmp_path / "observer-state.json",
+        include_debug_texts=True,
+        backend="wcferry",
+        allow_any_sender=True,
+    )
+
+    assert result["status"] == "emitted"
+    assert result["conversation_uid"] == "wechat_wxid_unknown"
+
+
+def test_observe_wechat_customer_message_wcferry_skips_sender_mismatch(tmp_path: Path) -> None:
+    broker = StubBroker()
+    client = StubWcfClient(message=StubWcfMessage(sender="wxid_unknown"))
+
+    result = observe_wechat_customer_message(
+        "kzr",
+        broker=broker,
+        wcf_client=client,
+        state_file=tmp_path / "observer-state.json",
+        include_debug_texts=True,
+        backend="wcferry",
+    )
+
+    assert result["status"] == "idle"
+    assert result["skip_reason"] == "sender_mismatch"
 
 
 def test_load_observer_state_returns_empty_for_missing_file(tmp_path: Path) -> None:

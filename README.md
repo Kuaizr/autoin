@@ -88,10 +88,36 @@ Run this while `autoin.tools.control_plane` and the Windows `autoin.tools.wechat
 
 ## WeChat Observer
 
-If your Windows WeChat build exposes chat text via UI Automation, you can observe the current open conversation directly:
+The observer now supports two backends:
+
+- `wcferry`: preferred for Windows inbound message receiving when you accept the hook-based risk profile
+- `pywinauto`: fallback for UIAutomation / OCR experiments
+
+To receive inbound messages with `WeChatFerry` only:
+
+```bash
+uv sync --extra dev --extra windows
+uv run python -m autoin.tools.wechat_observer \
+  --backend wcferry \
+  --customer-user-id wxid_target_user \
+  --poll-interval-seconds 2
+```
+
+If you do not know the sender `wxid` yet and only want to prove that inbound messages can be received, allow any non-self sender:
 
 ```bash
 uv run python -m autoin.tools.wechat_observer \
+  --backend wcferry \
+  --customer-user-id placeholder \
+  --allow-any-sender \
+  --poll-interval-seconds 2
+```
+
+If your Windows WeChat build exposes chat text via UI Automation, you can still observe the current open conversation directly:
+
+```bash
+uv run python -m autoin.tools.wechat_observer \
+  --backend pywinauto \
   --customer-user-id kzr \
   --poll-interval-seconds 2
 ```
@@ -100,6 +126,7 @@ Some newer WeChat desktop builds only expose the outer Qt shell to UI Automation
 
 ```bash
 uv run python -m autoin.tools.wechat_observer \
+  --backend pywinauto \
   --customer-user-id kzr \
   --poll-interval-seconds 2 \
   --ocr-fallback \

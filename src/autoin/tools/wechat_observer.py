@@ -29,6 +29,49 @@ NUMERIC_NOISE_PATTERN = re.compile(r"^\d+$")
 DEFAULT_STATE_FILE = Path(".autoin") / "wechat_observer_state.json"
 
 
+class WechatFerryUnavailableError(RuntimeError):
+    pass
+
+
+def load_wcf_client(debug: bool = False) -> Any:
+    try:
+        from wcferry import Wcf  # type: ignore
+    except ImportError as exc:
+        raise WechatFerryUnavailableError(
+            "wcferry is not installed. Install it on Windows with `uv sync --extra windows`."
+        ) from exc
+    return Wcf(debug=debug)
+
+
+class WcferryObserverClient:
+    def __init__(self, client: Any | None = None, *, debug: bool = False) -> None:
+        self.client = client or load_wcf_client(debug=debug)
+        if not self.client.is_login():
+            raise WechatFerryUnavailableError("WeChatFerry is connected but WeChat Desktop is not logged in.")
+        if not self.client.is_receiving_msg():
+            self.client.enable_receiving_msg()
+
+    def receive_message(self) -> dict[str, object]:
+        message = self.client.get_msg()
+        if message is None:
+            return {"status": "idle"}
+        sender = getattr(message, "sender", None)
+        roomid = getattr(message, "roomid", None)
+        content = getattr(message, "content", None)
+        msg_type = getattr(message, "type", None)
+        is_self = bool(message.from_self()) if hasattr(message, "from_self") else False
+        is_group = bool(message.from_group()) if hasattr(message, "from_group") else False
+        return {
+            "status": "received",
+            "sender": sender,
+            "roomid": roomid,
+            "content": content,
+            "message_type": msg_type,
+            "is_self": is_self,
+            "is_group": is_group,
+        }
+
+
 def normalize_visible_texts(texts: list[str]) -> list[str]:
     normalized: list[str] = []
     for text in texts:
@@ -124,23 +167,60 @@ def save_observer_state(state_file: Path, state: dict[str, dict[str, str]]) -> N
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def observe_wechat_customer_message(
-    customer_user_id: str,
+def _state_key(conversation: ConversationRef, latest_message: str) -> str:
+    return f"{conversation.uid}:{latest_message}"
+
+
+def _build_wcferry_observation(
     *,
-    broker: RedisBroker | None = None,
-    settings: Settings | None = None,
-    driver: Any | None = None,
-    state_file: Path = DEFAULT_STATE_FILE,
-    include_debug_texts: bool = False,
-    enable_ocr_fallback: bool = False,
-    tesseract_cmd: str = "tesseract",
+    customer_user_id: str,
+    allow_any_sender: bool,
+    wcf_client: Any | None,
 ) -> dict[str, Any]:
-    resolved_settings = settings
-    if resolved_settings is None and broker is None:
-        resolved_settings = get_settings()
-    selected_broker = broker or RedisBroker(resolved_settings)
-    selected_driver = driver or PywinautoDriver()
-    observer = ObserverAdapter("wechat.observer", Platform.WECHAT, selected_broker)
+    observer = wcf_client if isinstance(wcf_client, WcferryObserverClient) else WcferryObserverClient(wcf_client)
+    received = observer.receive_message()
+    if received["status"] != "received":
+        return {
+            "conversation": ConversationRef(platform=Platform.WECHAT, user_id=customer_user_id),
+            "latest_message": None,
+            "debug": {"backend": "wcferry", "received": received},
+        }
+
+    sender = received.get("sender")
+    content = received.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return {
+            "conversation": ConversationRef(platform=Platform.WECHAT, user_id=str(sender or customer_user_id)),
+            "latest_message": None,
+            "debug": {"backend": "wcferry", "received": received, "skip_reason": "empty_content"},
+        }
+    if received.get("is_self"):
+        return {
+            "conversation": ConversationRef(platform=Platform.WECHAT, user_id=str(sender or customer_user_id)),
+            "latest_message": None,
+            "debug": {"backend": "wcferry", "received": received, "skip_reason": "self_message"},
+        }
+    if not allow_any_sender and sender != customer_user_id:
+        return {
+            "conversation": ConversationRef(platform=Platform.WECHAT, user_id=str(sender or customer_user_id)),
+            "latest_message": None,
+            "debug": {"backend": "wcferry", "received": received, "skip_reason": "sender_mismatch"},
+        }
+    conversation_user_id = str(sender or customer_user_id)
+    return {
+        "conversation": ConversationRef(platform=Platform.WECHAT, user_id=conversation_user_id),
+        "latest_message": content.strip(),
+        "debug": {"backend": "wcferry", "received": received},
+    }
+
+
+def _build_pywinauto_observation(
+    *,
+    customer_user_id: str,
+    selected_driver: Any,
+    enable_ocr_fallback: bool,
+    tesseract_cmd: str,
+) -> dict[str, Any]:
     observation = selected_driver.observe_wechat_conversation(target_uid=customer_user_id)
     latest_message = select_latest_customer_message(observation.get("texts", []), customer_user_id)
     ocr_lines: list[str] = []
@@ -158,7 +238,107 @@ def observe_wechat_customer_message(
             ocr_lines = []
             ocr_probe_results = []
             ocr_error = f"{exc.code}: {exc}"
-    conversation = ConversationRef(platform=Platform.WECHAT, user_id=customer_user_id)
+    return {
+        "conversation": ConversationRef(platform=Platform.WECHAT, user_id=customer_user_id),
+        "latest_message": latest_message,
+        "debug": {
+            "backend": "pywinauto",
+            "window": observation.get("window"),
+            "visible_texts": observation.get("texts", []),
+            "ocr_lines": ocr_lines,
+            "ocr_artifact_path": str(artifact_path) if artifact_path else None,
+            "ocr_probe_results": ocr_probe_results,
+            "ocr_error": ocr_error,
+        },
+    }
+
+
+def observe_wechat_customer_message(
+    customer_user_id: str,
+    *,
+    broker: RedisBroker | None = None,
+    settings: Settings | None = None,
+    driver: Any | None = None,
+    wcf_client: Any | None = None,
+    state_file: Path = DEFAULT_STATE_FILE,
+    include_debug_texts: bool = False,
+    enable_ocr_fallback: bool = False,
+    tesseract_cmd: str = "tesseract",
+    backend: str = "auto",
+    allow_any_sender: bool = False,
+) -> dict[str, Any]:
+    resolved_settings = settings
+    if resolved_settings is None and broker is None:
+        resolved_settings = get_settings()
+    selected_broker = broker or RedisBroker(resolved_settings)
+    observer = ObserverAdapter("wechat.observer", Platform.WECHAT, selected_broker)
+    selected_backend = backend
+    selected_driver = driver
+    observation: dict[str, Any]
+    if selected_backend in {"auto", "wcferry"}:
+        try:
+            observation = _build_wcferry_observation(
+                customer_user_id=customer_user_id,
+                allow_any_sender=allow_any_sender,
+                wcf_client=wcf_client,
+            )
+            selected_backend = "wcferry"
+        except WechatFerryUnavailableError:
+            if backend == "wcferry":
+                raise
+            selected_backend = "pywinauto"
+        else:
+            conversation = observation["conversation"]
+            latest_message = observation["latest_message"]
+            state = load_observer_state(state_file)
+            previous_message = state.get(conversation.uid, {}).get("last_message")
+            if latest_message is None:
+                result = {
+                    "status": "idle",
+                    "conversation_uid": conversation.uid,
+                    "observed_message": None,
+                    "emitted": False,
+                    "backend": selected_backend,
+                }
+                if include_debug_texts:
+                    result.update(observation["debug"])
+                return result
+            if latest_message == previous_message:
+                result = {
+                    "status": "deduplicated",
+                    "conversation_uid": conversation.uid,
+                    "observed_message": latest_message,
+                    "emitted": False,
+                    "backend": selected_backend,
+                }
+                if include_debug_texts:
+                    result.update(observation["debug"])
+                return result
+            event = observer.emit_messages(conversation=conversation, messages=[latest_message])
+            state[conversation.uid] = {"last_message": latest_message}
+            save_observer_state(state_file, state)
+            result = {
+                "status": "emitted",
+                "event_id": event.event_id,
+                "event_type": event.event_type,
+                "conversation_uid": conversation.uid,
+                "observed_message": latest_message,
+                "emitted": True,
+                "backend": selected_backend,
+            }
+            if include_debug_texts:
+                result.update(observation["debug"])
+            return result
+
+    selected_driver = selected_driver or PywinautoDriver()
+    observation = _build_pywinauto_observation(
+        customer_user_id=customer_user_id,
+        selected_driver=selected_driver,
+        enable_ocr_fallback=enable_ocr_fallback,
+        tesseract_cmd=tesseract_cmd,
+    )
+    conversation = observation["conversation"]
+    latest_message = observation["latest_message"]
     state = load_observer_state(state_file)
     previous_message = state.get(conversation.uid, {}).get("last_message")
 
@@ -168,14 +348,10 @@ def observe_wechat_customer_message(
             "conversation_uid": conversation.uid,
             "observed_message": None,
             "emitted": False,
-            "window": observation.get("window"),
+            "backend": selected_backend,
         }
         if include_debug_texts:
-            result["visible_texts"] = observation.get("texts", [])
-            result["ocr_lines"] = ocr_lines
-            result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
-            result["ocr_probe_results"] = ocr_probe_results
-            result["ocr_error"] = ocr_error
+            result.update(observation["debug"])
         return result
 
     if latest_message == previous_message:
@@ -184,14 +360,10 @@ def observe_wechat_customer_message(
             "conversation_uid": conversation.uid,
             "observed_message": latest_message,
             "emitted": False,
-            "window": observation.get("window"),
+            "backend": selected_backend,
         }
         if include_debug_texts:
-            result["visible_texts"] = observation.get("texts", [])
-            result["ocr_lines"] = ocr_lines
-            result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
-            result["ocr_probe_results"] = ocr_probe_results
-            result["ocr_error"] = ocr_error
+            result.update(observation["debug"])
         return result
 
     event = observer.emit_messages(conversation=conversation, messages=[latest_message])
@@ -204,14 +376,10 @@ def observe_wechat_customer_message(
         "conversation_uid": conversation.uid,
         "observed_message": latest_message,
         "emitted": True,
-        "window": observation.get("window"),
+        "backend": selected_backend,
     }
     if include_debug_texts:
-        result["visible_texts"] = observation.get("texts", [])
-        result["ocr_lines"] = ocr_lines
-        result["ocr_artifact_path"] = str(artifact_path) if artifact_path else None
-        result["ocr_probe_results"] = ocr_probe_results
-        result["ocr_error"] = ocr_error
+        result.update(observation["debug"])
     return result
 
 
@@ -223,11 +391,14 @@ def run_wechat_observer_loop(
     broker: RedisBroker | None = None,
     settings: Settings | None = None,
     driver: Any | None = None,
+    wcf_client: Any | None = None,
     state_file: Path = DEFAULT_STATE_FILE,
     emit_logs: bool = False,
     include_debug_texts: bool = False,
     enable_ocr_fallback: bool = False,
     tesseract_cmd: str = "tesseract",
+    backend: str = "auto",
+    allow_any_sender: bool = False,
 ) -> dict[str, Any]:
     polls = 0
     snapshots: list[dict[str, Any]] = []
@@ -237,10 +408,13 @@ def run_wechat_observer_loop(
             broker=broker,
             settings=settings,
             driver=driver,
+            wcf_client=wcf_client,
             state_file=state_file,
             include_debug_texts=include_debug_texts,
             enable_ocr_fallback=enable_ocr_fallback,
             tesseract_cmd=tesseract_cmd,
+            backend=backend,
+            allow_any_sender=allow_any_sender,
         )
         snapshots.append(snapshot)
         polls += 1
@@ -271,6 +445,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-polls", type=int, default=None, help="Run N polling iterations and exit. Omit for an endless loop.")
     parser.add_argument("--state-file", default=str(DEFAULT_STATE_FILE))
     parser.add_argument("--once", action="store_true", help="Observe once and exit.")
+    parser.add_argument("--backend", choices=["auto", "wcferry", "pywinauto"], default="auto")
+    parser.add_argument("--allow-any-sender", action="store_true", help="For WeChatFerry mode, accept inbound text from any non-self sender instead of matching --customer-user-id exactly.")
     parser.add_argument("--debug-visible-texts", action="store_true", help="Include extracted visible texts in observer output for Windows UI debugging.")
     parser.add_argument("--ocr-fallback", action="store_true", help="Fallback to Tesseract OCR on a cropped WeChat chat screenshot when UIA text extraction fails.")
     parser.add_argument("--tesseract-cmd", default="tesseract")
@@ -288,6 +464,8 @@ def main(argv: list[str] | None = None) -> int:
             include_debug_texts=args.debug_visible_texts,
             enable_ocr_fallback=args.ocr_fallback,
             tesseract_cmd=args.tesseract_cmd,
+            backend=args.backend,
+            allow_any_sender=args.allow_any_sender,
         )
     else:
         result = run_wechat_observer_loop(
@@ -299,6 +477,8 @@ def main(argv: list[str] | None = None) -> int:
             include_debug_texts=args.debug_visible_texts,
             enable_ocr_fallback=args.ocr_fallback,
             tesseract_cmd=args.tesseract_cmd,
+            backend=args.backend,
+            allow_any_sender=args.allow_any_sender,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0
